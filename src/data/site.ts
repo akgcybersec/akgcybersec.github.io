@@ -1,5 +1,5 @@
 export const site = {
-  name: 'Aswin Gopalakrishnan',
+  name: 'Aswin G',
   short: 'aswin',
   handle: 'akgcybersec',
   role: 'Senior Security Consultant',
