@@ -1,0 +1,150 @@
+---
+title: "Better-RDPThief: rebuilding an old credential-theft trick, better"
+description: "Notes on why I rewrote RdpThief — a six-hook, staged-capture, obfuscated DLL that lifts RDP credentials from mstsc.exe."
+date: 2026-07-08
+tags: ["red-team", "windows", "malware-dev", "hooking"]
+---
+
+I've been meaning to rewrite [RdpThief](https://github.com/0x09AL/RdpThief) for a while.
+The original is a great teaching tool — it shows how to lift RDP credentials by hooking
+`CryptProtectMemory` inside `mstsc.exe` — but the code hasn't aged well, it misses a few
+capture paths, and the strings are all plaintext in the binary. So over the last week I
+rebuilt it from scratch as [Better-RDPThief](https://github.com/akgcybersec/Better-RDPThief).
+
+> Before anything else — this is a proof-of-concept for authorized red team engagements
+> and defensive research. Read the README's disclaimer. If you're using it, you already
+> know the rules.
+
+Here's what changed and why.
+
+## The problem: one hook isn't enough
+
+The original RdpThief hooks `CryptProtectMemory` and reads the password buffer just
+before mstsc re-protects it in memory. That works — but only for one code path. If
+you've watched mstsc under a debugger, credentials flow through several APIs during a
+single connection:
+
+- `SspiPrepareForCredRead` — receives the target server name
+- `CredUIParseUserNameW` — splits `domain\user` for display
+- `CredUnPackAuthenticationBufferW` — unpacks the credential blob from the UI
+- `CryptUnprotectMemory` — decrypts the password buffer for use
+- `CryptProtectMemory` — re-encrypts it before storage
+- `CredIsMarshaledCredentialW` — validates the marshaled cred token
+
+Different mstsc versions and auth flows (NLA vs. legacy, saved creds vs. typed, RDP
+Web vs. direct) hit different subsets of those. Hooking only one gives you flaky
+capture. So Better-RDPThief hooks all six through a single **Microsoft Detours**
+transaction on `DLL_PROCESS_ATTACH`. Each hook calls the original transparently —
+mstsc doesn't know we're there, and the RDP session works exactly as normal.
+
+## Staging: username and password arrive separately
+
+This is the annoying bit. Username comes out of `CredUIParseUserNameW`. Password
+comes out of `CryptUnprotectMemory`. Server name comes out of
+`SspiPrepareForCredRead`. All three are needed for a useful log entry, and they
+arrive on different threads at different times.
+
+I ended up with a two-stage model:
+
+1. **Stage** — as each hook fires, drop the captured value into a global
+   (`gStagedUser`, `gStagedPass`, target server).
+2. **Flush** — when both user and password are staged (or the target is known),
+   call `FlushStagedCapture()`, write to disk, deduplicate.
+
+The dedup is important. mstsc retries auth on failure and re-runs the whole
+credential path — without dedup you get five identical entries per session and a
+noisy log. The dedup is a last-seen-hash compare; cheap, good enough.
+
+## No plaintext API names in the binary
+
+If you strip an unprotected DLL and grep for `CryptProtectMemory`, you'll find it
+in the `.rdata` section as a plain UTF-8 string. Any static scanner will latch
+onto that. So none of the API or DLL names live in the binary as plaintext.
+
+The scheme is dumb-simple on purpose: a rolling-ADD encoding with an 8-byte key:
+
+```
+{ 0x4A, 0x91, 0x2C, 0xF7, 0x63, 0xB8, 0x1E, 0xD5 }
+```
+
+Every string ("CryptProtectMemory", "advapi32.dll", "SspiPrepareForCredRead",
+etc.) gets XOR'd... no wait, ADD'd with the key, position-rotated. At runtime,
+`obfDecodeA()` / `obfDecodeW()` decode into a stack buffer, `LoadLibraryA` +
+`GetProcAddress` resolve the API, then `obfZero()` wipes the buffer.
+
+Two consequences:
+
+- No IAT entries for the hooked APIs. Nothing to grep for.
+- Nothing sits decoded in memory longer than the API resolution takes.
+
+I'm not pretending this defeats a competent analyst — they'll dump the process,
+watch `LoadLibrary` calls, and reconstruct the table in ten minutes. It defeats
+signature scanners and casual `strings` runs. That's the actual bar for a red
+team op, not "unbreakable".
+
+## Why Detours
+
+Detours vs. inline patching vs. IAT hooking — I went back and forth. Ended up
+with Detours because:
+
+- **It handles the trampoline for you.** Getting the prolog right for a hot API
+  under ASLR and hotpatch prefixes by hand is a great way to introduce crashes.
+- **Transactions are atomic.** Six hooks either all install or none do. No
+  half-hooked state where you've replaced three APIs and the fourth blows up.
+- **The library is boring and well-tested.** For a POC that has to work reliably
+  across mstsc versions, "boring" is the correct choice.
+
+The tradeoff: Detours leaves a recognizable footprint. If your engagement needs
+to survive an EDR that specifically watches for Detours patterns, this isn't the
+right choice — you'd want manual inline patching with a custom trampoline. For
+credential harvest during a lab or authorized assessment, it's fine.
+
+## Output
+
+Everything ends up in `%TEMP%\msrdc.cache` (filename is a config constant — pick
+something that blends in with your engagement). One entry looks like:
+
+```
+==================================================
+Captured: 2026-07-08 10:22:41
+Target:   192.168.1.50
+Username: CORP\jsmith
+Password: Passw0rd!
+```
+
+That's it. No C2, no exfil. Deliberately. Once you're in the mstsc process
+you already have plenty of options for moving that file off-host, and baking
+network I/O into a hook DLL is asking for trouble (crashes, EDR heuristics,
+extra strings). Keep the payload dumb, keep exfil separate.
+
+## What it doesn't do
+
+Being honest about the limits:
+
+- **No AV evasion beyond string obfuscation.** The DLL will get flagged by
+  behavioral detection on injection — it uses `CryptProtectMemory` hook
+  patterns that YARA rules exist for. If you need EDR bypass, that's a
+  separate problem stack (unhooking, direct syscalls, module stomping, etc.).
+- **No injection helper included.** Ship your own — sRDI, classic
+  `CreateRemoteThread`, whatever your delivery chain expects.
+- **x64 only.** No 32-bit mstsc in 2026, don't care.
+- **Single-user.** If a Terminal Services host runs multiple concurrent mstsc
+  instances under different users, you'll want per-session log paths.
+
+## What I'd do differently next time
+
+- **Direct syscalls for the file I/O.** `CreateFileW` + `WriteFile` from a hook
+  is fine for a POC but leaves obvious API telemetry. Doing the writes via
+  `NtCreateFile` / `NtWriteFile` with syscall stubs would drop a chunk of
+  detection surface.
+- **In-memory ring buffer instead of on-disk log.** Read it out via a named
+  pipe or shared memory from a companion process. On-disk is the easiest
+  forensic artifact to pull.
+- **Cover the modern RDS client (`msrdc.exe`).** mstsc is legacy at this point;
+  the newer Windows Remote Desktop client uses different code paths and
+  Better-RDPThief doesn't touch them yet.
+
+Feedback, PRs, and detection rules welcome — the repo is
+[here](https://github.com/akgcybersec/Better-RDPThief). If you write a Sigma or
+YARA rule that catches this cleanly, I'd genuinely like to see it. Adversarial
+engineering is a lot more useful when both sides are actually playing.
