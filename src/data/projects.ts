@@ -22,24 +22,6 @@ export const projects: Project[] = [
     writeup: '/blog/better-rdpthief',
   },
   {
-    name: 'NmapToWord',
-    tagline: 'Turn Nmap scans into pentest-style Word reports',
-    description:
-      'Python tool that parses one or many Nmap XML outputs and generates a structured, pentest-styled DOCX report — hosts, services, versions, and script output — ready to hand to a client. Cuts hours off the reporting phase.',
-    url: 'https://github.com/akgcybersec/NmapToWord_v1.0',
-    category: 'Recon & Reporting',
-    tech: ['Python', 'Nmap', 'python-docx'],
-  },
-  {
-    name: 'Segmentation-Test',
-    tagline: 'Automated network segmentation validation',
-    description:
-      'Bash tooling for security professionals and admins to test whether network segmentation policies actually hold. Sweeps allowed/denied paths between segments and produces a clean pass/fail matrix — useful for PCI scope validation and post-firewall-change verification.',
-    url: 'https://github.com/akgcybersec/Segmentation-Test',
-    category: 'Red Team Tooling',
-    tech: ['Bash', 'nmap', 'nc'],
-  },
-  {
     name: 'CMDvault',
     tagline: 'Personal command & notes vault',
     description:
