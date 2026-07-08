@@ -5,8 +5,8 @@ import { Icon } from 'astro-icon/components';
 const stats = [
   { label: 'Years pentesting', value: '10+' },
   { label: 'Certifications', value: '10' },
-  { label: 'Domains covered', value: '5' },
-  { label: 'Languages spoken', value: '3' },
+  { label: 'Region', value: 'EMEA' },
+  { label: 'Domains covered', value: '6' },
 ];
 ---
 <section id="about" class="py-20 md:py-28">
@@ -18,13 +18,15 @@ const stats = [
       <div class="space-y-5 text-[color:var(--color-text-dim)] text-lg leading-relaxed">
         <p>
           I'm an offensive security engineer with over a decade of hands-on experience finding and
-          exploiting weaknesses across cloud, web, and mobile — then translating those findings into
-          real risk reduction for the businesses I work with.
+          exploiting weaknesses across cloud and on-prem environments — then translating those findings
+          into real risk reduction for the businesses I work with.
         </p>
         <p>
-          Currently based in the Netherlands, working at <span class="text-[color:var(--color-accent)] font-mono">{site.company}</span> in {site.companyCity}.
-          My focus areas are Azure red teaming, Active Directory attack paths, and web application security —
-          the intersection where modern enterprises get hurt most.
+          Currently based in the Netherlands, working as a Senior Security Consultant within the
+          <span class="text-[color:var(--color-accent)] font-mono">Unified Service Center</span> at
+          <span class="text-[color:var(--color-accent)] font-mono">{site.company} EMEA</span> in {site.companyCity}.
+          My focus is adversary simulation across cloud and on-prem, red team tactics, and the
+          full-scope engagements where the two worlds collide.
         </p>
         <p>
           This site is where I document what I learn as I keep sharpening the craft — writeups,
