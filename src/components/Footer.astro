@@ -1,0 +1,52 @@
+---
+import { site } from '../data/site';
+import { Icon } from 'astro-icon/components';
+
+const year = new Date().getFullYear();
+---
+<footer
+  class="mt-24 pt-10 pb-8"
+  style="border-top: 1px solid var(--color-border);"
+>
+  <div class="container-x flex flex-col md:flex-row gap-6 md:items-center md:justify-between">
+    <div class="font-mono text-xs text-[color:var(--color-text-muted)]">
+      <div>
+        <span class="text-[color:var(--color-accent)]">const</span> author
+        <span class="text-[color:var(--color-text-dim)]">=</span>
+        <span class="text-[color:var(--color-text)]">"{site.name}"</span>;
+      </div>
+      <div class="mt-1">
+        <span class="text-[color:var(--color-accent)]">//</span>
+        <span>© {year} · Built with Astro · Deployed on GitHub Pages</span>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-4">
+      <a
+        href={site.socials.github}
+        target="_blank"
+        rel="noopener"
+        class="flex items-center gap-2 font-mono text-xs text-[color:var(--color-text-dim)] hover:text-[color:var(--color-accent)] transition"
+      >
+        <Icon name="simple-icons:github" class="w-4 h-4" />
+        github
+      </a>
+      <a
+        href={site.socials.linkedin}
+        target="_blank"
+        rel="noopener"
+        class="flex items-center gap-2 font-mono text-xs text-[color:var(--color-text-dim)] hover:text-[color:var(--color-accent)] transition"
+      >
+        <Icon name="simple-icons:linkedin" class="w-4 h-4" />
+        linkedin
+      </a>
+      <a
+        href={`mailto:${site.email}`}
+        class="flex items-center gap-2 font-mono text-xs text-[color:var(--color-text-dim)] hover:text-[color:var(--color-accent)] transition"
+      >
+        <Icon name="lucide:mail" class="w-4 h-4" />
+        email
+      </a>
+    </div>
+  </div>
+</footer>

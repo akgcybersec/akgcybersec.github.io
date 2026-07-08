@@ -1,0 +1,76 @@
+---
+import { site } from '../data/site';
+import { Icon } from 'astro-icon/components';
+
+const links = [
+  {
+    icon: 'lucide:mail',
+    label: 'Email',
+    value: site.email,
+    href: `mailto:${site.email}`,
+    primary: true,
+  },
+  {
+    icon: 'simple-icons:linkedin',
+    label: 'LinkedIn',
+    value: '/in/aswingopalakrishnan',
+    href: site.socials.linkedin,
+  },
+  {
+    icon: 'simple-icons:github',
+    label: 'GitHub',
+    value: `@${site.handle}`,
+    href: site.socials.github,
+  },
+];
+---
+<section id="contact" class="py-20 md:py-32 relative overflow-hidden">
+  <div class="absolute inset-0 grid-bg opacity-40" aria-hidden="true"></div>
+  <div
+    class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full blur-3xl opacity-10"
+    style="background: radial-gradient(circle, var(--color-accent), transparent 60%);"
+    aria-hidden="true"
+  ></div>
+
+  <div class="container-x relative">
+    <div class="section-label"><span>05 // contact</span></div>
+    <h2 class="section-title">Get in touch</h2>
+    <p class="max-w-2xl text-lg text-[color:var(--color-text-dim)]">
+      Whether you want to talk red team engagements, security architecture, career questions, or
+      just say hi — I'm easy to reach.
+    </p>
+
+    <div class="mt-10 grid gap-3 md:grid-cols-3">
+      {links.map((link) => (
+        <a
+          href={link.href}
+          target={link.href.startsWith('mailto:') ? undefined : '_blank'}
+          rel="noopener"
+          class={`card group flex flex-col justify-between ${link.primary ? 'accent-glow' : ''}`}
+          style={link.primary ? 'border-color: rgba(255,176,32,0.35);' : ''}
+        >
+          <div class="flex items-center gap-3">
+            <div
+              class="inline-flex items-center justify-center w-10 h-10 rounded-md"
+              style="background: var(--color-accent-glow); border: 1px solid rgba(255,176,32,0.2);"
+            >
+              <Icon name={link.icon} class="w-5 h-5 text-[color:var(--color-accent)]" />
+            </div>
+            <div>
+              <div class="font-mono text-xs uppercase tracking-wider text-[color:var(--color-text-muted)]">
+                {link.label}
+              </div>
+              <div class="mt-0.5 font-mono text-sm text-[color:var(--color-text)] group-hover:text-[color:var(--color-accent)] transition break-all">
+                {link.value}
+              </div>
+            </div>
+          </div>
+          <div class="mt-6 flex items-center gap-1.5 font-mono text-xs text-[color:var(--color-text-muted)] group-hover:text-[color:var(--color-accent)] transition">
+            <span>reach out</span>
+            <Icon name="lucide:arrow-up-right" class="w-3.5 h-3.5" />
+          </div>
+        </a>
+      ))}
+    </div>
+  </div>
+</section>

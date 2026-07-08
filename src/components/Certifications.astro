@@ -1,0 +1,48 @@
+---
+import { certifications } from '../data/certifications';
+import { Icon } from 'astro-icon/components';
+
+const categoryIcon: Record<string, string> = {
+  'Red Team': 'lucide:swords',
+  'Cloud': 'lucide:cloud',
+  'Defense': 'lucide:shield',
+};
+
+const sorted = [...certifications].sort((a, b) => Number(b.year) - Number(a.year));
+---
+<section id="certifications" class="py-20 md:py-28">
+  <div class="container-x">
+    <div class="section-label"><span>03 // credentials</span></div>
+    <h2 class="section-title">Certifications</h2>
+    <p class="mb-10 max-w-2xl text-[color:var(--color-text-dim)]">
+      Core offensive security credentials — red team, multi-cloud attack, and defensive/network security.
+    </p>
+
+    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {sorted.map((cert) => (
+        <div class="card group relative overflow-hidden">
+          <div class="flex items-start justify-between">
+            <div class="flex items-center gap-2.5">
+              <Icon name={categoryIcon[cert.category] ?? 'lucide:award'} class="w-4 h-4 text-[color:var(--color-accent)]" />
+              <span class="font-mono text-xs uppercase tracking-wider text-[color:var(--color-text-muted)]">
+                {cert.category}
+              </span>
+            </div>
+            <span class="font-mono text-xs text-[color:var(--color-text-muted)]">{cert.year}</span>
+          </div>
+          <div class="mt-4">
+            <div class="font-display text-lg font-semibold text-[color:var(--color-accent)]">
+              {cert.code}
+            </div>
+            <div class="mt-1 text-sm text-[color:var(--color-text)]">
+              {cert.name}
+            </div>
+            <div class="mt-1 font-mono text-xs text-[color:var(--color-text-muted)]">
+              {cert.issuer}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

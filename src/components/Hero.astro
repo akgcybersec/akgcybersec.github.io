@@ -1,0 +1,125 @@
+---
+import { site } from '../data/site';
+import { Icon } from 'astro-icon/components';
+
+const terminalLines = [
+  { prompt: `${site.short}@${site.handle}:~$`, cmd: 'whoami', delay: 0 },
+  { output: `${site.name} · ${site.role}`, delay: 700 },
+  { prompt: `${site.short}@${site.handle}:~$`, cmd: 'cat ./mission.txt', delay: 1400 },
+  { output: site.bio, delay: 2100 },
+  { prompt: `${site.short}@${site.handle}:~$`, cmd: 'ls ./focus/', delay: 2800 },
+  { output: 'red-team/  cloud-security/  web-pentest/  mobile/  threat-modeling/', delay: 3400 },
+];
+---
+<section class="relative overflow-hidden pt-14 pb-24 md:pt-24 md:pb-32">
+  <div class="absolute inset-0 grid-bg opacity-70" aria-hidden="true"></div>
+  <div
+    class="absolute -top-40 -left-40 h-96 w-96 rounded-full blur-3xl opacity-20"
+    style="background: radial-gradient(circle, var(--color-accent), transparent 60%);"
+    aria-hidden="true"
+  ></div>
+  <div
+    class="absolute -bottom-40 -right-40 h-[28rem] w-[28rem] rounded-full blur-3xl opacity-10"
+    style="background: radial-gradient(circle, var(--color-accent), transparent 60%);"
+    aria-hidden="true"
+  ></div>
+
+  <div class="container-x relative">
+    <div class="grid gap-12 md:grid-cols-[1.1fr_1fr] items-center">
+      <div class="fade-up">
+        <div class="section-label">
+          <span>online · {site.location}</span>
+        </div>
+
+        <h1 class="mt-4 text-4xl md:text-6xl font-bold leading-[1.05] tracking-tight">
+          {site.name}
+        </h1>
+
+        <p class="mt-4 text-xl md:text-2xl font-mono text-[color:var(--color-accent)]">
+          {site.role}
+        </p>
+
+        <p class="mt-2 font-mono text-sm text-[color:var(--color-text-dim)]">
+          {site.subroles.join(' · ')}
+        </p>
+
+        <p class="mt-6 max-w-xl text-lg text-[color:var(--color-text-dim)] leading-relaxed">
+          {site.bio}
+        </p>
+
+        <div class="mt-8 flex flex-wrap items-center gap-3">
+          <a href="/blog" class="btn-primary">
+            <Icon name="lucide:book-open" class="w-4 h-4" />
+            Read the blog
+          </a>
+          <a href="#contact" class="btn-ghost">
+            <Icon name="lucide:mail" class="w-4 h-4" />
+            Get in touch
+          </a>
+          <a
+            href={site.socials.github}
+            target="_blank"
+            rel="noopener"
+            class="btn-ghost"
+          >
+            <Icon name="simple-icons:github" class="w-4 h-4" />
+            GitHub
+          </a>
+        </div>
+
+        <div class="mt-10 flex items-center gap-6 font-mono text-xs text-[color:var(--color-text-muted)]">
+          <div class="flex items-center gap-2">
+            <span class="relative flex h-2 w-2">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style="background: var(--color-success);"></span>
+              <span class="relative inline-flex rounded-full h-2 w-2" style="background: var(--color-success);"></span>
+            </span>
+            <span>currently at {site.company}, {site.companyCity}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="fade-up" style="animation-delay: 0.15s">
+        <div
+          class="relative rounded-lg overflow-hidden shadow-2xl accent-glow"
+          style="background: var(--color-bg-elev); border: 1px solid var(--color-border-strong);"
+        >
+          <div class="flex items-center gap-2 px-4 py-2.5" style="background: var(--color-bg-card); border-bottom: 1px solid var(--color-border);">
+            <span class="w-3 h-3 rounded-full" style="background: #ff5f57;"></span>
+            <span class="w-3 h-3 rounded-full" style="background: #febc2e;"></span>
+            <span class="w-3 h-3 rounded-full" style="background: #28c840;"></span>
+            <span class="ml-3 font-mono text-xs text-[color:var(--color-text-muted)]">
+              {site.short}@{site.handle}: ~
+            </span>
+          </div>
+          <div class="p-5 md:p-6 font-mono text-sm leading-relaxed min-h-[280px]" id="terminal">
+            {terminalLines.map((line, i) => (
+              <div class="term-line" style={`--i:${i}`} data-delay={line.delay}>
+                {line.prompt && (
+                  <>
+                    <span class="text-[color:var(--color-accent)]">{line.prompt.split('@')[0]}</span>
+                    <span class="text-[color:var(--color-text-muted)]">@</span>
+                    <span class="text-[color:var(--color-text)]">{line.prompt.split('@')[1].split(':')[0]}</span>
+                    <span class="text-[color:var(--color-text-muted)]">:~$</span>
+                    <span class="ml-2 text-[color:var(--color-text)]">{line.cmd}</span>
+                  </>
+                )}
+                {!line.prompt && (
+                  <span class="text-[color:var(--color-text-dim)]">{line.output}</span>
+                )}
+              </div>
+            ))}
+            <div class="term-caret cursor-blink"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .term-line {
+    opacity: 0;
+    animation: fadeUp 0.35s ease-out forwards;
+    animation-delay: calc(var(--i) * 0.5s);
+  }
+</style>

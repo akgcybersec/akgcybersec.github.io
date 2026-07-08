@@ -1,0 +1,67 @@
+---
+import { site } from '../data/site';
+import { Icon } from 'astro-icon/components';
+
+const links = [
+  { href: '/#about', label: 'About' },
+  { href: '/#skills', label: 'Skills' },
+  { href: '/#certifications', label: 'Certs' },
+  { href: '/blog', label: 'Blog' },
+  { href: '/#contact', label: 'Contact' },
+];
+---
+<header
+  class="sticky top-0 z-40 backdrop-blur-md"
+  style="background: rgba(10,10,10,0.72); border-bottom: 1px solid var(--color-border);"
+>
+  <div class="container-x flex items-center justify-between h-16">
+    <a href="/" class="group flex items-center gap-2 font-mono text-sm">
+      <span class="text-[color:var(--color-accent)]">$</span>
+      <span class="text-[color:var(--color-text)] group-hover:text-[color:var(--color-accent)] transition">
+        {site.short}
+      </span>
+      <span class="text-[color:var(--color-text-muted)]">@{site.handle}</span>
+      <span class="text-[color:var(--color-text-muted)]">:~</span>
+      <span class="text-[color:var(--color-accent)] cursor-blink"></span>
+    </a>
+
+    <nav class="hidden md:flex items-center gap-1">
+      {links.map((l) => (
+        <a
+          href={l.href}
+          class="px-3 py-2 rounded font-mono text-sm text-[color:var(--color-text-dim)] hover:text-[color:var(--color-accent)] transition"
+        >
+          {l.label}
+        </a>
+      ))}
+    </nav>
+
+    <div class="flex items-center gap-3">
+      <a
+        href={site.socials.github}
+        target="_blank"
+        rel="noopener"
+        aria-label="GitHub"
+        class="p-2 rounded text-[color:var(--color-text-dim)] hover:text-[color:var(--color-accent)] transition"
+      >
+        <Icon name="simple-icons:github" class="w-4 h-4" />
+      </a>
+      <a
+        href={site.socials.linkedin}
+        target="_blank"
+        rel="noopener"
+        aria-label="LinkedIn"
+        class="p-2 rounded text-[color:var(--color-text-dim)] hover:text-[color:var(--color-accent)] transition"
+      >
+        <Icon name="simple-icons:linkedin" class="w-4 h-4" />
+      </a>
+      <a
+        href={`mailto:${site.email}`}
+        aria-label="Email"
+        class="p-2 rounded text-[color:var(--color-text-dim)] hover:text-[color:var(--color-accent)] transition"
+      >
+        <Icon name="lucide:mail" class="w-4 h-4" />
+      </a>
+    </div>
+  </div>
+</header>
