@@ -1,6 +1,6 @@
 ---
 title: "PEB & TEB: finding loaded modules without calling Windows APIs"
-description: "How to walk the Process Environment Block to locate any loaded DLL's base address — the foundational shellcode technique behind position-independent loaders and API-call-free implants."
+description: "How to walk the Process Environment Block to locate any loaded DLL's base address, the foundational shellcode technique behind position-independent loaders and API-call-free implants."
 date: 2026-07-09
 tags: ["windows", "malware-dev", "internals", "shellcode", "red-team"]
 ---
@@ -8,7 +8,7 @@ tags: ["windows", "malware-dev", "internals", "shellcode", "red-team"]
 *Part 3 of the Windows internals series. [Part 1](/blog/pe-internals/) covered PE headers and the export directory. [Part 2](/blog/iat-internals/) covered the IAT and dynamic API resolution.*
 
 The previous post ended with "find the DLL base address via PEB walk." This post delivers
-that — plus enough context to understand why shellcode authors reach for the PEB first,
+that, plus enough context to understand why shellcode authors reach for the PEB first,
 before ever considering `GetModuleHandle` or `LoadLibrary`.
 
 ## What the PEB is
@@ -17,7 +17,7 @@ The **Process Environment Block** is a per-process data structure maintained by 
 It holds everything Windows needs to manage a running process: loaded modules, heap info,
 command-line arguments, environment variables, loader state.
 
-Its address is always accessible — no API call needed. On x64 you read it from the GS
+Its address is always accessible, no API call needed. On x64 you read it from the GS
 segment register:
 
 ```nasm
@@ -37,7 +37,7 @@ API is resolved.
 
 ## What the TEB is
 
-The **Thread Environment Block** lives one step up — accessible at `gs:[0x00]` (same
+The **Thread Environment Block** lives one step up, accessible at `gs:[0x00]` (same
 segment base). It describes the currently running *thread*, and its first field is a
 pointer back to the PEB:
 
@@ -52,7 +52,7 @@ typedef struct _TEB {
 
 In practice, most shellcode skips the TEB and reads the PEB address directly from
 `gs:[0x60]`. But the TEB is where you get the current thread's stack limits, the
-thread's last error, and the thread's local storage — useful if you're writing
+thread's last error, and the thread's local storage. Useful if you're writing
 a DLL or need per-thread context.
 
 ## The loader module list
@@ -62,9 +62,9 @@ The field in the PEB we care about most:
 ```c
 typedef struct _PEB {
     BYTE                    Reserved1[2];
-    BYTE                    BeingDebugged;   // anti-debug flag — more on this below
+    BYTE                    BeingDebugged;   // anti-debug flag, more on this below
     // ...
-    PPEB_LDR_DATA           Ldr;             // offset 0x18 (x64) — module list
+    PPEB_LDR_DATA           Ldr;             // offset 0x18 (x64) - module list
     // ...
 } PEB;
 ```
@@ -90,7 +90,7 @@ typedef struct _LDR_DATA_TABLE_ENTRY {
     LIST_ENTRY  InLoadOrderLinks;
     LIST_ENTRY  InMemoryOrderLinks;
     LIST_ENTRY  InInitializationOrderLinks;
-    PVOID       DllBase;        // base address of the loaded module — this is what we want
+    PVOID       DllBase;        // base address of the loaded module - this is what we want
     PVOID       EntryPoint;
     ULONG       SizeOfImage;
     UNICODE_STRING FullDllName;
@@ -142,15 +142,15 @@ no trace in the IAT.
 
 This is the foundation of every position-independent shellcode loader in existence.
 
-## Shellcode variant — no wide string comparison
+## Shellcode variant: no wide string comparison
 
 In shellcode you often avoid the C runtime entirely, which means no `_wcsicmp`. The
 common substitute is a hash of the module name, compared at walk time. Combining
-both hashing steps — module name hash in the PEB walk, function name hash in the
-export walk — gives you a loader that contains no identifiable strings:
+both hashing steps (module name hash in the PEB walk, function name hash in the
+export walk) gives you a loader that contains no identifiable strings:
 
 ```c
-// pseudocode — actual hash implementation varies
+// pseudocode - actual hash implementation varies
 PVOID GetProcByHash(DWORD moduleHash, DWORD funcHash) {
     PPEB pPeb   = (PPEB)__readgsqword(0x60);
     PLIST_ENTRY head  = &pPeb->Ldr->InLoadOrderModuleList;
@@ -172,7 +172,7 @@ PVOID GetProcByHash(DWORD moduleHash, DWORD funcHash) {
 One function, two hash inputs, returns any API from any loaded DLL. This is the pattern
 you see in public shellcode frameworks and the one you should understand before you use them.
 
-## BeingDebugged — the free anti-debug check
+## BeingDebugged: the free anti-debug check
 
 While you're in the PEB, there's one byte worth reading for free:
 
@@ -181,7 +181,7 @@ BYTE isDebugged = pPeb->BeingDebugged;  // offset 0x02
 ```
 
 The OS sets this to `1` when a debugger is attached. It's the same value that
-`IsDebuggerPresent()` reads — that API is literally just this PEB byte check wrapped
+`IsDebuggerPresent()` reads. That API is literally just this PEB byte check wrapped
 in a function. Checking it directly skips the API call and the import.
 
 Caveat: it's the first anti-debug check any analyst disables. Treat it as a speed bump,
@@ -218,5 +218,5 @@ gs:[0x60]
 No imports. No strings. No API calls to get there. Every link in the chain is a memory
 read off a known structure offset.
 
-The next part covers payload storage — the different techniques for embedding shellcode or
+The next part covers payload storage, the different techniques for embedding shellcode or
 a PE in a binary and how each trades off between detection surface and operational flexibility.

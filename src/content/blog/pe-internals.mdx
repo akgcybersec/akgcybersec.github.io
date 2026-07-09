@@ -1,6 +1,6 @@
 ---
 title: "PE internals from the attacker's perspective"
-description: "What every red teamer should actually know about the Windows Portable Executable format — structures, headers, and how the loader resolves exports."
+description: "What every red teamer should actually know about the Windows Portable Executable format: structures, headers, and how the loader resolves exports."
 date: 2026-07-09
 tags: ["windows", "malware-dev", "internals", "red-team"]
 ---
@@ -12,14 +12,14 @@ practical, attacker-focused, with the parts that actually bite you in engagement
 ## What a PE actually is
 
 A Portable Executable is a file the Windows loader can read, map into memory, and run. That covers
-`.exe`, `.dll`, `.sys`, shellcode loaders — anything the OS knows how to execute. The format dates
+`.exe`, `.dll`, `.sys`, shellcode loaders, anything the OS knows how to execute. The format dates
 to the early NT days and has barely changed at the structural level, which is both a blessing
 (everything documented) and a curse (decades of quirks to navigate).
 
 The mental model that helps most: **a PE is two different things depending on where it lives.**
 
 - **On disk (raw):** positions are measured as file offsets from byte 0. These are called *file pointers*.
-- **In memory (virtual):** positions are measured as *Relative Virtual Addresses* (RVAs) — offsets from
+- **In memory (virtual):** positions are measured as *Relative Virtual Addresses* (RVAs), offsets from
   the image base the loader chose.
 
 The same field in the same struct can mean completely different things depending on whether you're
@@ -38,14 +38,14 @@ never use. There's one field that matters:
 
 ```c
 typedef struct _IMAGE_DOS_HEADER {
-    WORD e_magic;    // "MZ" — 4D 5A — the signature that identifies a PE
+    WORD e_magic;    // "MZ" (4D 5A) - the signature that identifies a PE
     // ... lots of DOS-era fields nobody cares about ...
-    LONG e_lfanew;   // file offset of the NT Headers — this is the one you want
+    LONG e_lfanew;   // file offset of the NT Headers - this is the one you want
 } IMAGE_DOS_HEADER;
 ```
 
 `e_lfanew` is the pointer to the real header. Everything before it is irrelevant for our
-purposes — except `e_magic` (`MZ`), which is the fast check for "is this a PE at all?"
+purposes, except `e_magic` (`MZ`), which is the fast check for "is this a PE at all?"
 
 In your loader code, step one is always: validate the magic, follow `e_lfanew`.
 
@@ -53,7 +53,7 @@ In your loader code, step one is always: validate the magic, follow `e_lfanew`.
 
 ```c
 typedef struct _IMAGE_NT_HEADERS64 {
-    DWORD                   Signature;       // "PE\0\0" — 50 45 00 00
+    DWORD                   Signature;       // "PE\0\0" (50 45 00 00)
     IMAGE_FILE_HEADER       FileHeader;
     IMAGE_OPTIONAL_HEADER64 OptionalHeader;
 } IMAGE_NT_HEADERS64;
@@ -63,9 +63,9 @@ typedef struct _IMAGE_NT_HEADERS64 {
 
 ```c
 typedef struct _IMAGE_FILE_HEADER {
-    WORD  Machine;              // architecture — 0x8664 for x64, 0x14C for x86
+    WORD  Machine;              // architecture: 0x8664 for x64, 0x14C for x86
     WORD  NumberOfSections;     // how many sections follow the headers
-    DWORD TimeDateStamp;        // compile timestamp — useful for threat intel
+    DWORD TimeDateStamp;        // compile timestamp, useful for threat intel
     WORD  Characteristics;      // executable, DLL, etc.
     // ...
 } IMAGE_FILE_HEADER;
@@ -77,27 +77,27 @@ reflective loader and need to handle DLL vs EXE init differently.
 
 ### Optional Header
 
-Despite the name it's mandatory. This is the richest structure in the PE — the fields that
+Despite the name it's mandatory. This is the richest structure in the PE, with the fields that
 drive how the loader actually maps the image:
 
-- **`AddressOfEntryPoint`** — RVA of the first instruction. For shellcode injection, this
+- **`AddressOfEntryPoint`**: RVA of the first instruction. For shellcode injection, this
   is your landing point after you've loaded the image. For analysis, it's where you put your
   first breakpoint.
-- **`ImageBase`** — the preferred load address. ASLR will randomise this at runtime, but
+- **`ImageBase`**: the preferred load address. ASLR will randomise this at runtime, but
   the on-disk value is still what all RVAs in the file are calculated against.
-- **`SizeOfImage`** — total size of the mapped image. You need this when doing manual mapping
+- **`SizeOfImage`**: total size of the mapped image. You need this when doing manual mapping
   to allocate the right amount of virtual memory.
-- **`Subsystem`** — `2` for GUI, `3` for console. Affect how Windows initialises the process.
-- **`DllCharacteristics`** — flags like ASLR support (`0x40`), DEP/NX (`0x100`),
+- **`Subsystem`**: `2` for GUI, `3` for console. Affects how Windows initialises the process.
+- **`DllCharacteristics`**: flags like ASLR support (`0x40`), DEP/NX (`0x100`),
   and CFG (`0x4000`). When you're building an evasive binary, you control these.
 
-The Optional Header also holds the **Data Directories** array — 16 entries, each an RVA + size
+The Optional Header also holds the **Data Directories** array, 16 entries, each an RVA + size
 pointing to something meaningful: Export Directory, Import Directory, TLS callbacks,
 security directory (where Authenticode signatures live), and so on.
 
 ### Section Table
 
-After the headers comes the section table — one `IMAGE_SECTION_HEADER` per section:
+After the headers comes the section table, one `IMAGE_SECTION_HEADER` per section:
 
 ```c
 typedef struct _IMAGE_SECTION_HEADER {
@@ -121,7 +121,7 @@ typedef struct _IMAGE_SECTION_HEADER {
 
 When writing a PE packer or loader, you use this table to know where to copy each section
 in memory and what permissions to apply with `VirtualProtect`. The section with
-`Characteristics = 0x60000020` is your `.text` — executable + readable + contains code.
+`Characteristics = 0x60000020` is your `.text`: executable, readable, contains code.
 
 ## The Export Directory: how the loader finds functions
 
@@ -148,36 +148,35 @@ typedef struct _IMAGE_EXPORT_DIRECTORY {
 
 Three parallel arrays work together:
 
-1. **`AddressOfFunctions`** — the actual function addresses (EAT — Export Address Table)
-2. **`AddressOfNames`** — names of exported functions, as RVAs to strings
-3. **`AddressOfNameOrdinals`** — ordinals that map names to EAT slots
+1. **`AddressOfFunctions`**: the actual function addresses (EAT, Export Address Table)
+2. **`AddressOfNames`**: names of exported functions, as RVAs to strings
+3. **`AddressOfNameOrdinals`**: ordinals that map names to EAT slots
 
 ### The resolution algorithm
 
 Say you want the address of `VirtualAlloc` from `kernel32.dll`. The loader does:
 
 1. Walk `AddressOfNames` until it finds the string `"VirtualAlloc"` at index *i*
-2. Look up `AddressOfNameOrdinals[i]` — that gives you ordinal *n*
-3. Look up `AddressOfFunctions[n]` — that's the RVA of the function
+2. Look up `AddressOfNameOrdinals[i]` to get ordinal *n*
+3. Look up `AddressOfFunctions[n]` for the RVA of the function
 
 If you only have an ordinal (no name), subtract the `Base` value first: ordinal `6` with
 base `1` → index `5` in the EAT.
 
-This is exactly the algorithm you implement when writing custom `GetProcAddress` replacements —
+This is exactly the algorithm you implement when writing custom `GetProcAddress` replacements,
 the kind you need when you've unhooked NTDLL or you're resolving APIs at runtime to avoid IAT
 entries. Understanding the structure is what makes that code second nature instead of copy-pasta.
 
 ### Forwarded exports
 
-There's an edge case worth knowing. Some entries in the EAT aren't function addresses at all —
-they're strings pointing to *another* DLL's export:
+There's an edge case worth knowing. Some entries in the EAT aren't function addresses at all. They're strings pointing to *another* DLL's export:
 
 ```
 NTDLL.RtlAcquireSRWLockExclusive
 ```
 
 The loader detects this by checking if the RVA falls within the Export Directory's own range
-(as defined in the Data Directory entry). If it does, it's a forwarder — resolve the named
+(as defined in the Data Directory entry). If it does, it's a forwarder; resolve the named
 function from the target DLL instead.
 
 This trips up custom loaders that skip the range check. `kernel32.dll` forwards quite a few
@@ -186,7 +185,7 @@ some APIs will silently resolve to garbage addresses.
 
 ## Practical takeaways
 
-- **Validate with `e_magic` and `Signature` first.** If either is wrong, stop — you're not
+- **Validate with `e_magic` and `Signature` first.** If either is wrong, stop. You're not
   looking at a PE.
 - **Always convert RVAs to file offsets when reading from disk.** `file_offset = RVA - section.VirtualAddress + section.PointerToRawData` for the section containing the RVA.
 - **Know the Data Directory indices by heart:** `[0]` exports, `[1]` imports, `[5]` relocs,
@@ -194,7 +193,7 @@ some APIs will silently resolve to garbage addresses.
 - **Implement your own export resolver.** The three-array walk is 20 lines of C. Once you've
   written it yourself, debugging loader issues becomes mechanical.
 - **Check `DllCharacteristics` before assuming anything about the load environment.** A PE
-  without ASLR (`0x40`) will always load at `ImageBase` — useful to know when you're
+  without ASLR (`0x40`) will always load at `ImageBase`, useful to know when you're
   picking an injection target.
 
 The tooling I use for this work: PE-Bear for visual inspection, `dumpbin /headers` and
@@ -202,4 +201,4 @@ The tooling I use for this work: PE-Bear for visual inspection, `dumpbin /header
 when I want to follow an RVA live.
 
 The next parts of this series cover the Import Address Table, PEB/TEB, and payload storage
-techniques — the building blocks that connect PE internals to actual loader and injector construction.
+techniques: the building blocks that connect PE internals to actual loader and injector construction.

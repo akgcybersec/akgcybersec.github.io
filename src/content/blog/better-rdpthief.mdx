@@ -1,17 +1,17 @@
 ---
 title: "Better-RDPThief: rebuilding an old credential-theft trick, better"
-description: "Notes on why I rewrote RdpThief — a six-hook, staged-capture, obfuscated DLL that lifts RDP credentials from mstsc.exe."
+description: "Notes on why I rewrote RdpThief: a six-hook, staged-capture, obfuscated DLL that lifts RDP credentials from mstsc.exe."
 date: 2026-07-08
 tags: ["red-team", "windows", "malware-dev", "hooking"]
 ---
 
 I've been meaning to rewrite [RdpThief](https://github.com/0x09AL/RdpThief) for a while.
-The original is a great teaching tool — it shows how to lift RDP credentials by hooking
-`CryptProtectMemory` inside `mstsc.exe` — but the code hasn't aged well, it misses a few
+The original is a great teaching tool. It shows how to lift RDP credentials by hooking
+`CryptProtectMemory` inside `mstsc.exe`, but the code hasn't aged well, it misses a few
 capture paths, and the strings are all plaintext in the binary. So over the last week I
 rebuilt it from scratch as [Better-RDPThief](https://github.com/akgcybersec/Better-RDPThief).
 
-> Before anything else — this is a proof-of-concept for authorized red team engagements
+> Before anything else: this is a proof-of-concept for authorized red team engagements
 > and defensive research. Read the README's disclaimer. If you're using it, you already
 > know the rules.
 
@@ -20,21 +20,21 @@ Here's what changed and why.
 ## The problem: one hook isn't enough
 
 The original RdpThief hooks `CryptProtectMemory` and reads the password buffer just
-before mstsc re-protects it in memory. That works — but only for one code path. If
+before mstsc re-protects it in memory. That works, but only for one code path. If
 you've watched mstsc under a debugger, credentials flow through several APIs during a
 single connection:
 
-- `SspiPrepareForCredRead` — receives the target server name
-- `CredUIParseUserNameW` — splits `domain\user` for display
-- `CredUnPackAuthenticationBufferW` — unpacks the credential blob from the UI
-- `CryptUnprotectMemory` — decrypts the password buffer for use
-- `CryptProtectMemory` — re-encrypts it before storage
-- `CredIsMarshaledCredentialW` — validates the marshaled cred token
+- `SspiPrepareForCredRead`: receives the target server name
+- `CredUIParseUserNameW`: splits `domain\user` for display
+- `CredUnPackAuthenticationBufferW`: unpacks the credential blob from the UI
+- `CryptUnprotectMemory`: decrypts the password buffer for use
+- `CryptProtectMemory`: re-encrypts it before storage
+- `CredIsMarshaledCredentialW`: validates the marshaled cred token
 
 Different mstsc versions and auth flows (NLA vs. legacy, saved creds vs. typed, RDP
 Web vs. direct) hit different subsets of those. Hooking only one gives you flaky
 capture. So Better-RDPThief hooks all six through a single **Microsoft Detours**
-transaction on `DLL_PROCESS_ATTACH`. Each hook calls the original transparently —
+transaction on `DLL_PROCESS_ATTACH`. Each hook calls the original transparently.
 mstsc doesn't know we're there, and the RDP session works exactly as normal.
 
 ## Staging: username and password arrive separately
@@ -46,13 +46,13 @@ arrive on different threads at different times.
 
 I ended up with a two-stage model:
 
-1. **Stage** — as each hook fires, drop the captured value into a global
+1. **Stage**: as each hook fires, drop the captured value into a global
    (`gStagedUser`, `gStagedPass`, target server).
-2. **Flush** — when both user and password are staged (or the target is known),
+2. **Flush**: when both user and password are staged (or the target is known),
    call `FlushStagedCapture()`, write to disk, deduplicate.
 
 The dedup is important. mstsc retries auth on failure and re-runs the whole
-credential path — without dedup you get five identical entries per session and a
+credential path. Without dedup you get five identical entries per session and a
 noisy log. The dedup is a last-seen-hash compare; cheap, good enough.
 
 ## No plaintext API names in the binary
@@ -77,14 +77,14 @@ Two consequences:
 - No IAT entries for the hooked APIs. Nothing to grep for.
 - Nothing sits decoded in memory longer than the API resolution takes.
 
-I'm not pretending this defeats a competent analyst — they'll dump the process,
+I'm not pretending this defeats a competent analyst. They'll dump the process,
 watch `LoadLibrary` calls, and reconstruct the table in ten minutes. It defeats
 signature scanners and casual `strings` runs. That's the actual bar for a red
 team op, not "unbreakable".
 
 ## Why Detours
 
-Detours vs. inline patching vs. IAT hooking — I went back and forth. Ended up
+Detours vs. inline patching vs. IAT hooking. I went back and forth. Ended up
 with Detours because:
 
 - **It handles the trampoline for you.** Getting the prolog right for a hot API
@@ -96,12 +96,12 @@ with Detours because:
 
 The tradeoff: Detours leaves a recognizable footprint. If your engagement needs
 to survive an EDR that specifically watches for Detours patterns, this isn't the
-right choice — you'd want manual inline patching with a custom trampoline. For
+right choice. You'd want manual inline patching with a custom trampoline. For
 credential harvest during a lab or authorized assessment, it's fine.
 
 ## Output
 
-Everything ends up in `%TEMP%\msrdc.cache` (filename is a config constant — pick
+Everything ends up in `%TEMP%\msrdc.cache` (filename is a config constant; pick
 something that blends in with your engagement). One entry looks like:
 
 ```
@@ -122,10 +122,10 @@ extra strings). Keep the payload dumb, keep exfil separate.
 Being honest about the limits:
 
 - **No AV evasion beyond string obfuscation.** The DLL will get flagged by
-  behavioral detection on injection — it uses `CryptProtectMemory` hook
+  behavioral detection on injection. It uses `CryptProtectMemory` hook
   patterns that YARA rules exist for. If you need EDR bypass, that's a
   separate problem stack (unhooking, direct syscalls, module stomping, etc.).
-- **No injection helper included.** Ship your own — sRDI, classic
+- **No injection helper included.** Ship your own: sRDI, classic
   `CreateRemoteThread`, whatever your delivery chain expects.
 - **x64 only.** No 32-bit mstsc in 2026, don't care.
 - **Single-user.** If a Terminal Services host runs multiple concurrent mstsc
@@ -144,7 +144,7 @@ Being honest about the limits:
   the newer Windows Remote Desktop client uses different code paths and
   Better-RDPThief doesn't touch them yet.
 
-Feedback, PRs, and detection rules welcome — the repo is
+Feedback, PRs, and detection rules welcome. The repo is
 [here](https://github.com/akgcybersec/Better-RDPThief). If you write a Sigma or
 YARA rule that catches this cleanly, I'd genuinely like to see it. Adversarial
 engineering is a lot more useful when both sides are actually playing.
