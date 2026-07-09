@@ -2,6 +2,10 @@
 title: "Backdooring PE files: practical code-cave workflow"
 description: "A practical walkthrough of backdooring PE files with code caves, preserving execution flow, and handling stack/register state correctly."
 date: 2023-03-25
+seriesSlug: "malware-notes"
+seriesTitle: "Malware Notes: Basic"
+seriesPart: 7
+seriesDescription: "Practical malware development notes: PE internals, loaders, injection, and API interception."
 tags: ["windows", "malware-dev", "pe", "red-team", "windows-internals-series"]
 ---
 
@@ -27,6 +31,50 @@ The cost is size. Big payloads do not fit.
 
 ## Finding code caves
 
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/Cminer1.png" alt="Cminer1" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">Cminer1</figcaption>
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/PETool1.gif" alt="PE Tools" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">PE Tools</figcaption>
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/modifysection.png" alt="PETool Section" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">PETool Section</figcaption>
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/x64dbg1.gif" alt="x64DGB1" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB1</figcaption>
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/x64dbg2.gif" alt="x64DGB2" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB2</figcaption>
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/x64dbg3.png" alt="x64DGB3" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB3</figcaption>
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/x64dbg5.gif" alt="x64DGB5" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB5</figcaption>
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/x64dbg6.gif" alt="x64DGB6" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB6</figcaption>
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/x64dbg7.gif" alt="x64DGB7" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB7</figcaption>
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/x64dbg8.gif" alt="x64DGB8" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB8</figcaption>
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/x64dbg9.gif" alt="x64DGB9" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB9</figcaption>
+</figure>
 Tools like `Cminer`, PE-Bear, and x64dbg make cave discovery straightforward.
 
 What I actually check:
@@ -66,6 +114,10 @@ This looks simple on paper. Most failures are state corruption.
 
 ## State preservation and stack repair
 
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/x64dbg10.gif" alt="x64DGB10" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB10</figcaption>
+</figure>
 If payload changes stack/register state and you do not restore cleanly, the host process eventually crashes.
 
 In old x86 cave workflows, a common pattern is:
@@ -85,6 +137,10 @@ I treat this as mandatory validation, not an optional cleanup step.
 
 ## Why PE backdooring still matters
 
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/x64dbg11.gif" alt="x64DGB11" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB11</figcaption>
+</figure>
 Even with modern in-memory tradecraft, PE backdooring is still useful for:
 
 - understanding loader and section behavior deeply
@@ -95,6 +151,14 @@ It is also a great way to learn where your own assumptions are wrong about secti
 
 ## Reliability checklist I use
 
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/x64dbg12.png" alt="x64DGB12" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB12</figcaption>
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/x64dbg13.png" alt="x64DGB13" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB13</figcaption>
+</figure>
 - patch in small increments, save often
 - keep a clean known-good intermediate build
 - record original displaced instructions before changing anything
@@ -105,6 +169,10 @@ Most failed backdoors are not detection failures. They are engineering mistakes 
 
 ## Limits
 
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/x64dbg14.png" alt="x64DGB14" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB14</figcaption>
+</figure>
 Code-cave backdooring is not a universal stealth technique.
 
 - Structural anomalies can be detected

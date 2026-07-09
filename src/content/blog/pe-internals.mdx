@@ -2,6 +2,10 @@
 title: "PE internals from the attacker's perspective"
 description: "What every red teamer should actually know about the Windows Portable Executable format: structures, headers, and how the loader resolves exports."
 date: 2023-04-06
+seriesSlug: "malware-notes"
+seriesTitle: "Malware Notes: Basic"
+seriesPart: 1
+seriesDescription: "Practical malware development notes: PE internals, loaders, injection, and API interception."
 tags: ["windows", "malware-dev", "internals", "red-team", "windows-internals-series"]
 ---
 
@@ -26,6 +30,10 @@ The same field in the same struct can mean completely different things depending
 reading a file off disk or a loaded image. This is the #1 source of confusion when you first write
 a loader or try to parse a PE programmatically. RVA ≠ file offset. Always check which context you're in.
 
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/peformats/e10ec5db6acc403684f7854e9ae3a1ce.png" alt="PE header layout reference" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">PE header layout reference</figcaption>
+</figure>
 ## The header chain
 
 Think of PE headers as road signs. Each header tells you where the next relevant structure lives.
@@ -123,6 +131,10 @@ When writing a PE packer or loader, you use this table to know where to copy eac
 in memory and what permissions to apply with `VirtualProtect`. The section with
 `Characteristics = 0x60000020` is your `.text`: executable, readable, contains code.
 
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/peformats/0ea65c32846340b790311c19a8a26d45.png" alt="Section table example" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">Section table example</figcaption>
+</figure>
 ## The Export Directory: how the loader finds functions
 
 This is the one that trips people up most when building tooling. The Export Directory is
@@ -167,6 +179,10 @@ This is exactly the algorithm you implement when writing custom `GetProcAddress`
 the kind you need when you've unhooked NTDLL or you're resolving APIs at runtime to avoid IAT
 entries. Understanding the structure is what makes that code second nature instead of copy-pasta.
 
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/peformats/4c1837dfdc37480d99fa4a6cf40f0785.png" alt="Export name and ordinal mapping" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">Export name and ordinal mapping</figcaption>
+</figure>
 ### Forwarded exports
 
 There's an edge case worth knowing. Some entries in the EAT aren't function addresses at all. They're strings pointing to *another* DLL's export:
@@ -183,6 +199,10 @@ This trips up custom loaders that skip the range check. `kernel32.dll` forwards 
 functions to `ntdll.dll` this way. If your manual-mapping code doesn't handle forwarders,
 some APIs will silently resolve to garbage addresses.
 
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/peformats/764d1ea1afb84bada129b6a7431c583c.png" alt="Forwarded export example" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">Forwarded export example</figcaption>
+</figure>
 ## Practical takeaways
 
 - **Validate with `e_magic` and `Signature` first.** If either is wrong, stop. You're not

@@ -2,6 +2,10 @@
 title: "PEB & TEB: finding loaded modules without calling Windows APIs"
 description: "How to walk the Process Environment Block to locate any loaded DLL's base address, the foundational shellcode technique behind position-independent loaders and API-call-free implants."
 date: 2023-04-07
+seriesSlug: "malware-notes"
+seriesTitle: "Malware Notes: Basic"
+seriesPart: 3
+seriesDescription: "Practical malware development notes: PE internals, loaders, injection, and API interception."
 tags: ["windows", "malware-dev", "internals", "shellcode", "red-team", "windows-internals-series"]
 ---
 
@@ -13,6 +17,42 @@ before ever considering `GetModuleHandle` or `LoadLibrary`.
 
 ## What the PEB is
 
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/tebpeb/6ac9a9b938de43e2881b13dd3007a532.png" alt="07e7cb8ea3010fae840610d1e7c4e564.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">07e7cb8ea3010fae840610d1e7c4e564.png</figcaption>
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/tebpeb/ec692a6358744ff6b333283605d36909.png" alt="9a219eeae6d5399a059456af11a27db8.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">9a219eeae6d5399a059456af11a27db8.png</figcaption>
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/tebpeb/bd6c9563e0754e1cb2743662edb84e29.png" alt="a56fd8428bb9441d17b227504f1cd5b1.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">a56fd8428bb9441d17b227504f1cd5b1.png</figcaption>
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/tebpeb/d526394eb8ca49aa99625ef5ecdb7607.png" alt="8567d4eb4ca87773f9985eb00d9dfa6f.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">8567d4eb4ca87773f9985eb00d9dfa6f.png</figcaption>
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/tebpeb/8dd5cb0d39484aec94dda3fcfdaee734.png" alt="84c0b6acdc4620ef1cc85b56818796dd.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">84c0b6acdc4620ef1cc85b56818796dd.png</figcaption>
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/tebpeb/dc5ad6cb87a244028d959a9d8d88fffe.png" alt="1d3804efb9e807096070be59c965a3c7.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">1d3804efb9e807096070be59c965a3c7.png</figcaption>
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/tebpeb/8aa6b4e7436d431cb7ceb900f0f362d8.png" alt="f4a9a18947a638ce32005a5b5245f521.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">f4a9a18947a638ce32005a5b5245f521.png</figcaption>
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/tebpeb/d0f7878d6f394ebb8d5c81e30f9a9dc6.png" alt="7761c10ba2b76d78e78ef7e657cf0cd4.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">7761c10ba2b76d78e78ef7e657cf0cd4.png</figcaption>
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/tebpeb/42193d193d9347968cd77adc7032a13b.png" alt="553814e801c1ab27a4f715b8581f9901.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">553814e801c1ab27a4f715b8581f9901.png</figcaption>
+</figure>
 The **Process Environment Block** is a per-process data structure maintained by the OS.
 It holds everything Windows needs to manage a running process: loaded modules, heap info,
 command-line arguments, environment variables, loader state.

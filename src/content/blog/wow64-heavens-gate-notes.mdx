@@ -2,6 +2,10 @@
 title: "WoW64 and Heaven's Gate: operator notes"
 description: "How 32-bit code transitions into 64-bit execution under WoW64, why Heaven's Gate matters, and where cross-architecture injection goes wrong."
 date: 2023-05-01
+seriesSlug: "malware-notes"
+seriesTitle: "Malware Notes: Basic"
+seriesPart: 9
+seriesDescription: "Practical malware development notes: PE internals, loaders, injection, and API interception."
 tags: ["windows", "malware-dev", "wow64", "internals", "red-team", "windows-internals-series"]
 ---
 
@@ -11,6 +15,18 @@ They are not random. They are architecture boundary mistakes.
 
 ## What WoW64 is
 
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/wow64/b3e0be63fba44b2f807d6724a5847e49.png" alt="2b417b2efb60226287494f5564004015.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">2b417b2efb60226287494f5564004015.png</figcaption>
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/wow64/374abee2b0ea4dbfba50930511b4394e.png" alt="0ab17590a3151298b198dbbadbf17d58.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">0ab17590a3151298b198dbbadbf17d58.png</figcaption>
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/wow64/81223fe671f54ac7826d4f835101b604.png" alt="e60fb036ee73a0cfbbead618854f346a.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">e60fb036ee73a0cfbbead618854f346a.png</figcaption>
+</figure>
 WoW64 is the compatibility layer that lets 32-bit user-mode processes run on 64-bit Windows.
 
 Key components:
@@ -23,6 +39,18 @@ A WoW64 process can host both 32-bit and 64-bit NTDLL-related behavior paths. Th
 
 ## Why Heaven's Gate matters
 
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/wow64/96f84d7aff364187b33af32454f28e86.png" alt="5f0a69cff92de2a78f6f6b81adf3760a.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">5f0a69cff92de2a78f6f6b81adf3760a.png</figcaption>
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/wow64/be9d504726f04cd4ae02c12fd4d64094.png" alt="a88985867abde48cee948600074fa130.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">a88985867abde48cee948600074fa130.png</figcaption>
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/wow64/c913a9d28aad4a349353f6930c7e6b76.png" alt="ae6a1200c33b72314f20f43feb5f5987.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">ae6a1200c33b72314f20f43feb5f5987.png</figcaption>
+</figure>
 A 32-bit process under WoW64 can transition to 64-bit execution context using far control transfer mechanics. This transition path is popularly called Heaven's Gate.
 
 In debugger views, you often see this around WoW64 system-service trampolines.

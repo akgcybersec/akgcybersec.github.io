@@ -2,6 +2,10 @@
 title: "API hooking in practice: Detours and IAT hooks"
 description: "How Detours-style trampolines and IAT patching differ in mechanics, reliability, and detection surface during offensive Windows research."
 date: 2023-05-01
+seriesSlug: "malware-notes"
+seriesTitle: "Malware Notes: Basic"
+seriesPart: 10
+seriesDescription: "Practical malware development notes: PE internals, loaders, injection, and API interception."
 tags: ["windows", "malware-dev", "hooking", "detours", "red-team", "windows-internals-series"]
 ---
 
@@ -43,6 +47,14 @@ Operational downside:
 
 ## IAT hooking
 
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/apihooking/42faa4a46fe445808127104c0fbb1875.png" alt="116325bcdc0b237085549c8ff74a1faa.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">116325bcdc0b237085549c8ff74a1faa.png</figcaption>
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/apihooking/56b12d4d77e046f4a7a2880e5f9a38e3.png" alt="34b1a6392f813dd825524061ebc34577.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">34b1a6392f813dd825524061ebc34577.png</figcaption>
+</figure>
 IAT hooking modifies import slots in the consumer module, not the callee module's code bytes.
 
 Flow:

@@ -2,6 +2,10 @@
 title: "Shellcode in image carriers: practical notes"
 description: "How image-concatenation carriers work, how payload extraction by offset is done, and where this trick helps or fails in real operations."
 date: 2023-03-25
+seriesSlug: "malware-notes"
+seriesTitle: "Malware Notes: Basic"
+seriesPart: 5
+seriesDescription: "Practical malware development notes: PE internals, loaders, injection, and API interception."
 tags: ["windows", "malware-dev", "payload-delivery", "red-team", "windows-internals-series"]
 ---
 
@@ -22,6 +26,14 @@ The offset is the original image length.
 
 ## Building the carrier
 
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/saturn-xxd.jpg" alt="Saturn.jpg with XXD" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">Saturn.jpg with XXD</figcaption>
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/msgbox-size.png" alt="msgbox" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">msgbox</figcaption>
+</figure>
 Get image byte count:
 
 ```bash
