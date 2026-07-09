@@ -1,0 +1,114 @@
+---
+title: "API hooking in practice: Detours and IAT hooks"
+description: "How Detours-style trampolines and IAT patching differ in mechanics, reliability, and detection surface during offensive Windows research."
+date: 2023-05-01
+tags: ["windows", "malware-dev", "hooking", "detours", "red-team", "windows-internals-series"]
+---
+
+Part 10 of the series. Hooking is one of those topics where people learn one pattern and try to apply it everywhere.
+
+I use two primary models depending on objective:
+
+- inline trampoline hooks (Detours-style)
+- IAT entry replacement
+
+Both intercept calls. Their tradeoffs are very different.
+
+## Detours-style inline hooks
+
+Mechanics:
+
+1. copy original prologue bytes from target API
+2. place those bytes in a trampoline
+3. patch target API entry with unconditional jump to hook function
+4. optionally call original path via trampoline
+
+Conceptually:
+
+```text
+target_api_entry -> JMP hook_handler
+trampoline -> original_bytes + JMP target_api_entry+patched_len
+```
+
+Why I like it:
+
+- works even if caller does not use IAT for that API path
+- full control over intercepted parameters and return value
+- mature implementation support via Microsoft Detours
+
+Operational downside:
+
+- modified code bytes in loaded module are easy to integrity-check
+- patched prologues are common EDR hunting signal
+
+## IAT hooking
+
+IAT hooking modifies import slots in the consumer module, not the callee module's code bytes.
+
+Flow:
+
+1. locate import directory
+2. find target imported DLL
+3. find thunk for target function
+4. change page protection
+5. overwrite function pointer with hook handler
+6. restore protection
+
+Example core write:
+
+```cpp
+DWORD oldProtect = 0;
+VirtualProtect(currentFuncAddr, 4096, PAGE_READWRITE, &oldProtect);
+*currentFuncAddr = (PROC)hookingFunc;
+VirtualProtect(currentFuncAddr, 4096, oldProtect, &oldProtect);
+```
+
+Why I like it:
+
+- simple implementation
+- no instruction-length disassembly needed
+- less fragile than manual inline patching in many cases
+
+Limit:
+
+- only intercepts call sites that actually route through that module's IAT
+
+If code resolves APIs dynamically (`GetProcAddress` paths), your IAT hook can miss traffic.
+
+## Reliability and detection tradeoff
+
+Quick comparison:
+
+- **Detours/inline**: broader interception reach, higher byte-patch visibility
+- **IAT hook**: narrower interception scope, cleaner implementation, still detectable via IAT integrity checks
+
+I choose by interception objective, not ideology.
+
+## Minimal safe hook lifecycle
+
+No matter which model, I enforce the same lifecycle:
+
+1. install with explicit transaction/guard
+2. validate interception path
+3. retain pointer/path to original behavior
+4. cleanly unhook on detach
+5. fail closed if install partially succeeds
+
+Unhooking discipline matters. Broken teardown is a common reason tools crash on process exit.
+
+## Why this still matters for red team research
+
+Hooking is useful beyond payload execution:
+
+- behavior observation in target processes
+- API argument telemetry in lab implants
+- controlled fault injection
+- defensive simulation and purple-team validation
+
+It is also directly relevant to modern EDR behavior because many endpoint products use similar interception primitives themselves.
+
+## Final note
+
+Hooking is not about "which method is stealthier forever." It is about selecting the interception primitive that matches your process context, stability requirements, and telemetry budget.
+
+I keep both patterns ready and pick per target.

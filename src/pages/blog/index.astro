@@ -7,6 +7,25 @@ const posts = (await getCollection('blog', ({ data }) => !data.draft)).sort(
   (a, b) => b.data.date.getTime() - a.data.date.getTime()
 );
 
+const seriesOrder = [
+  'pe-internals',
+  'iat-internals',
+  'peb-teb-internals',
+  'payload-storage-patterns',
+  'shellcode-in-image-carriers',
+  'code-injection-patterns',
+  'backdooring-pe-files-practical-notes',
+  'reflective-loader-walkthrough',
+  'wow64-heavens-gate-notes',
+  'api-hooking-detours-and-iat',
+];
+
+const windowsSeries = posts
+  .filter((post) => post.data.tags.includes('windows-internals-series'))
+  .sort((a, b) => seriesOrder.indexOf(a.id) - seriesOrder.indexOf(b.id));
+
+const otherPosts = posts.filter((post) => !post.data.tags.includes('windows-internals-series'));
+
 const formatter = new Intl.DateTimeFormat('en-US', {
   year: 'numeric',
   month: 'short',
@@ -27,8 +46,52 @@ const formatter = new Intl.DateTimeFormat('en-US', {
         <p class="mt-4 text-[color:var(--color-text-dim)]">No posts yet. Check back soon.</p>
       </div>
     ) : (
-      <div class="space-y-4">
-        {posts.map((post) => (
+      <div class="space-y-8">
+        {windowsSeries.length > 0 && (
+          <div>
+            <div class="mb-4 flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-[color:var(--color-text-muted)]">
+              <Icon name="lucide:book-marked" class="w-4 h-4 text-[color:var(--color-accent)]" />
+              Windows Internals Series
+            </div>
+            <div class="space-y-3">
+              {windowsSeries.map((post, i) => (
+                <a
+                  href={`/blog/${post.id}/`}
+                  class="card flex flex-col sm:flex-row sm:items-baseline gap-4 sm:gap-8 group"
+                >
+                  <div class="font-mono text-xs text-[color:var(--color-text-muted)] shrink-0 sm:w-28 sm:pt-1">
+                    Part {i + 1}
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <h2 class="font-display text-xl font-semibold text-[color:var(--color-text)] group-hover:text-[color:var(--color-accent)] transition">
+                      {post.data.title}
+                    </h2>
+                    <p class="mt-2 text-sm text-[color:var(--color-text-dim)]">
+                      {post.data.description}
+                    </p>
+                    <div class="mt-3 flex flex-wrap gap-1.5">
+                      {post.data.tags.filter((tag) => tag !== 'windows-internals-series').map((tag) => (
+                        <span class="tag">{tag}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <Icon
+                    name="lucide:arrow-up-right"
+                    class="w-4 h-4 text-[color:var(--color-text-muted)] group-hover:text-[color:var(--color-accent)] transition sm:mt-1"
+                  />
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {otherPosts.length > 0 && (
+          <div>
+            <div class="mb-4 font-mono text-xs uppercase tracking-wider text-[color:var(--color-text-muted)]">
+              Other Notes
+            </div>
+            <div class="space-y-4">
+              {otherPosts.map((post) => (
           <a
             href={`/blog/${post.id}/`}
             class="card flex flex-col sm:flex-row sm:items-baseline gap-4 sm:gap-8 group"
@@ -54,7 +117,10 @@ const formatter = new Intl.DateTimeFormat('en-US', {
               class="w-4 h-4 text-[color:var(--color-text-muted)] group-hover:text-[color:var(--color-accent)] transition sm:mt-1"
             />
           </a>
-        ))}
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     )}
   </section>

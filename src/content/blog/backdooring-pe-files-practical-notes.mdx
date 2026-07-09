@@ -1,0 +1,117 @@
+---
+title: "Backdooring PE files: practical code-cave workflow"
+description: "A practical walkthrough of backdooring PE files with code caves, preserving execution flow, and handling stack/register state correctly."
+date: 2023-03-25
+tags: ["windows", "malware-dev", "pe", "red-team", "windows-internals-series"]
+---
+
+Part 7 of the series. This one is file-level tampering, not live process injection.
+
+When I backdoor a PE for research, the real challenge is not dropping bytes into a cave. The hard part is preserving execution flow so the original program still behaves normally.
+
+## Implant options in a PE
+
+There are three standard ways to add code:
+
+- **Code cave**: reuse slack space inside existing sections
+- **New section**: create a section for payload
+- **Extended section**: grow an existing section (usually last section)
+
+I use code caves first for constrained implants because:
+
+- minimal header changes
+- lower file-structure drift
+- good for short stubs
+
+The cost is size. Big payloads do not fit.
+
+## Finding code caves
+
+Tools like `Cminer`, PE-Bear, and x64dbg make cave discovery straightforward.
+
+What I actually check:
+
+- cave size
+- section permissions
+- RVA/file offset consistency
+- whether adjacent code/data is sensitive
+
+Not all caves are equal. A giant cave in a high-risk location can be worse than a small one in a safe region.
+
+## Redirecting control flow
+
+Typical flow:
+
+1. identify program entry or chosen hook point
+2. overwrite first instructions with jump to cave
+3. run implant code in cave
+4. execute displaced original instructions
+5. jump back after the detour site
+
+Conceptually:
+
+```asm
+entrypoint:
+  jmp cave_start
+
+cave_start:
+  ; save state
+  ; run payload
+  ; restore state
+  ; run displaced original bytes
+  jmp entrypoint+len(displaced_bytes)
+```
+
+This looks simple on paper. Most failures are state corruption.
+
+## State preservation and stack repair
+
+If payload changes stack/register state and you do not restore cleanly, the host process eventually crashes.
+
+In old x86 cave workflows, a common pattern is:
+
+```asm
+pushad
+pushfd
+; payload
+add esp, <delta>   ; if payload changed stack depth
+popfd
+popad
+```
+
+The key is calculating actual stack delta, not guessing. Measure pre-payload and post-payload `ESP/RSP` and repair exactly.
+
+I treat this as mandatory validation, not an optional cleanup step.
+
+## Why PE backdooring still matters
+
+Even with modern in-memory tradecraft, PE backdooring is still useful for:
+
+- understanding loader and section behavior deeply
+- testing static analysis workflows
+- building defensive detections around structural tampering
+
+It is also a great way to learn where your own assumptions are wrong about section permissions, relocations, and startup flow.
+
+## Reliability checklist I use
+
+- patch in small increments, save often
+- keep a clean known-good intermediate build
+- record original displaced instructions before changing anything
+- verify jump targets and instruction alignment every step
+- test on matching architecture and OS build
+
+Most failed backdoors are not detection failures. They are engineering mistakes in control-flow restoration.
+
+## Limits
+
+Code-cave backdooring is not a universal stealth technique.
+
+- Structural anomalies can be detected
+- Signature drift can still be tracked
+- Incorrect cave selection breaks host behavior
+- Modern controls monitor both disk and runtime outcomes
+
+So I use this technique mainly where I need deterministic patch-level understanding, not as a one-size-fits-all evasion primitive.
+
+Next part covers reflective loading, where the PE loader is carried inside the payload and execution stays in memory.

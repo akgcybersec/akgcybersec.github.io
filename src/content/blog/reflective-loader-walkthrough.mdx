@@ -1,0 +1,128 @@
+---
+title: "Reflective loader walkthrough for operators"
+description: "How reflective DLL loading works in memory: base discovery, export resolution, import fixups, relocations, and entry-point transfer."
+date: 2023-05-01
+tags: ["windows", "malware-dev", "reflective-loader", "red-team", "windows-internals-series"]
+---
+
+Part 8 of the series. Reflective loading is the point where PE internals, PEB walking, and import resolution all meet in one pipeline.
+
+I like reflective loader code because it is brutally honest. If your PE understanding is weak, it fails immediately.
+
+## What reflective loading is
+
+A reflective DLL carries its own mini-loader. Instead of relying on the normal Windows loader path, it maps itself into memory and resolves its own dependencies.
+
+High-level flow:
+
+1. find current image base in memory
+2. resolve required APIs from loaded modules
+3. allocate destination image memory
+4. copy headers and sections
+5. resolve imports
+6. apply relocations
+7. transfer control to entry point
+
+That is a full PE loader in compact form.
+
+## Stage 1: finding the image base
+
+Classic pattern:
+
+- get current return address
+- walk backward in memory
+- locate `MZ` + valid `PE` signatures
+
+The tiny helper often looks like:
+
+```cpp
+__declspec(noinline) ULONG_PTR caller(void) { return (ULONG_PTR)_ReturnAddress(); }
+```
+
+From that address, the loader walks backward until DOS and NT signatures match expected layout.
+
+## Stage 2: resolving kernel exports without imports
+
+The loader walks PEB module lists to locate `kernel32.dll` and `ntdll.dll`, then parses export tables to resolve function pointers it needs (`LoadLibraryA`, `GetProcAddress`, `VirtualAlloc`, `NtFlushInstructionCache`, and similar).
+
+This is the same primitive from earlier posts:
+
+- PEB walk for module base
+- export table walk for symbol address
+
+Many loaders use ROR hash matching for module and function names to avoid plaintext strings.
+
+## Stage 3: mapping image to new memory
+
+Once basic APIs are available:
+
+- reserve/commit destination memory for `SizeOfImage`
+- copy headers
+- copy each section to `ImageBase + section.VirtualAddress`
+
+At this point the image exists at a new base, but it is not runnable yet.
+
+## Stage 4: import processing
+
+The loader walks `IMAGE_IMPORT_DESCRIPTOR` entries:
+
+1. load each required DLL
+2. iterate thunks
+3. resolve by ordinal or name
+4. write resolved addresses to `FirstThunk` (IAT)
+
+No import fixups, no execution.
+
+## Stage 5: relocations
+
+If new base differs from preferred `ImageBase`, relocation delta is:
+
+```text
+delta = actual_base - preferred_image_base
+```
+
+Then walk relocation blocks and patch each relocation slot with `delta`.
+
+This step is where many custom loaders break under ASLR-heavy conditions. Works in one test box, crashes in another.
+
+## Stage 6: instruction cache and entry point
+
+After writes and patching, flush instruction cache and transfer to entry point (`DllMain` or exported routine depending on chain design).
+
+If this transition succeeds and host process stays stable, reflective load is complete.
+
+## About sRDI
+
+sRDI wraps this model so an existing DLL can be transformed into shellcode that performs reflective mapping and optional exported function invocation.
+
+It is useful when you have DLL capability but need shellcode transport compatibility.
+
+Typical sequence:
+
+1. convert DLL to shellcode wrapper
+2. inject shellcode
+3. wrapper runs reflective loader
+4. DLL mapped and initialized in-memory
+5. optional export invoked with user data
+
+## Why I still care about this in 2026
+
+Reflective loading is not new. It is still foundational because:
+
+- it teaches full in-memory PE lifecycle
+- it removes dependency on standard loader path
+- it supports modular post-exploitation architecture
+
+Also, defenders increasingly model loader behavior. Understanding this pipeline helps both offensive engineering and detection engineering.
+
+## Common failure points
+
+- wrong assumptions on architecture-specific structures
+- incomplete import handling (ordinal edge cases)
+- relocation logic that skips block types
+- no protection/permission normalization after mapping
+- weak cleanup paths when entry-point invocation fails
+
+Reflective loading rewards precision. Hand-wavy implementations fail loudly.
+
+Next part moves to WoW64 and Heaven's Gate, where 32-bit to 64-bit transition becomes the central problem.

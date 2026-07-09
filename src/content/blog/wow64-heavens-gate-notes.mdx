@@ -1,0 +1,90 @@
+---
+title: "WoW64 and Heaven's Gate: operator notes"
+description: "How 32-bit code transitions into 64-bit execution under WoW64, why Heaven's Gate matters, and where cross-architecture injection goes wrong."
+date: 2023-05-01
+tags: ["windows", "malware-dev", "wow64", "internals", "red-team", "windows-internals-series"]
+---
+
+Part 9 of the series. If you are writing injection tooling and ignore WoW64 details, you eventually hit weird failures that look random.
+
+They are not random. They are architecture boundary mistakes.
+
+## What WoW64 is
+
+WoW64 is the compatibility layer that lets 32-bit user-mode processes run on 64-bit Windows.
+
+Key components:
+
+- `wow64.dll`: core transition/dispatch layer
+- `wow64cpu.dll`: CPU-mode transition support
+- `wow64win.dll`: Win32 subsystem mediation
+
+A WoW64 process can host both 32-bit and 64-bit NTDLL-related behavior paths. That split is the root of many tooling bugs.
+
+## Why Heaven's Gate matters
+
+A 32-bit process under WoW64 can transition to 64-bit execution context using far control transfer mechanics. This transition path is popularly called Heaven's Gate.
+
+In debugger views, you often see this around WoW64 system-service trampolines.
+
+Practical implication:
+
+- A pure x86 execution model is not enough when your target operation ultimately requires x64 context.
+
+## The real operator problem
+
+People say: "I can inject x64 payload bytes from x86 process, so I am done."
+
+You are not done.
+
+You also need a way to execute in x64 context, not just place bytes in remote memory.
+
+That is where helper transitions like `ExecuteX64` style stubs come in:
+
+1. save x86 state
+2. perform far transition to x64 segment
+3. execute x64 routine (`x64Function`)
+4. call target x64 API path (`RtlCreateUserThread` family and related)
+5. transition back and restore x86 state
+
+If any of these steps are wrong, behavior ranges from silent failure to hard crash.
+
+## What to validate in cross-arch tooling
+
+- pointer width assumptions (`DWORD` vs pointer-sized fields)
+- calling convention expectations across boundary
+- stack alignment before x64 call paths
+- context restoration after transition
+- target API availability in expected module path
+
+Most "works on my VM" cross-arch implants fail on production endpoints because one of those assumptions is wrong.
+
+## Debugger signals I watch
+
+When testing WoW64 transitions, I focus on:
+
+- module layout (`ntdll` variants loaded)
+- transition stubs in disassembly
+- segment-selector and far-jump behavior
+- pre/post transition register integrity
+- success/failure return semantics in x64 routines
+
+If those are stable, payload execution stability improves dramatically.
+
+## Limitations and detection reality
+
+Heaven's Gate is not magical stealth.
+
+- transition paths are well known
+- EDR telemetry around cross-arch execution has matured
+- malformed transitions are noisy and unstable
+
+I treat this primarily as a compatibility and correctness requirement for specific payload chains, not as a silver bullet.
+
+## Practical takeaway
+
+If your tooling must bridge x86 launcher and x64 target semantics, design that boundary explicitly. Do not bolt it on late.
+
+The architecture boundary is the feature, not an edge case.
+
+Next part closes the malware migration set with API hooking, especially Detours-style trampolines and IAT replacement patterns.

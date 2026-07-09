@@ -1,0 +1,163 @@
+---
+title: "Code injection patterns I still see in 2026"
+description: "Classic remote thread injection, thread context hijacking, section mapping, APC, and Early Bird: when each pattern works and where it breaks."
+date: 2023-04-08
+tags: ["windows", "malware-dev", "process-injection", "red-team", "windows-internals-series"]
+---
+
+Part 6 of the series. This is the practical injection map I keep in my head when testing process execution paths.
+
+I am not treating these as "bypass recipes." I use them as reliability and telemetry baselines. If you cannot reason about these primitives, you cannot reason about advanced variants either.
+
+## 1) Classic remote thread injection
+
+This is the baseline:
+
+1. `VirtualAllocEx` in target process
+2. `WriteProcessMemory` into that region
+3. `CreateRemoteThread` (or a variant) at payload start
+
+```c
+LPVOID pRemoteCode = VirtualAllocEx(hProc, NULL, payload_len, MEM_COMMIT, PAGE_EXECUTE_READ);
+WriteProcessMemory(hProc, pRemoteCode, payload, payload_len, NULL);
+CreateRemoteThread(hProc, NULL, 0, (LPTHREAD_START_ROUTINE)pRemoteCode, NULL, 0, NULL);
+```
+
+Possible execution APIs:
+
+- `CreateRemoteThread`
+- `RtlCreateUserThread`
+- `NtCreateThreadEx`
+
+Why it still matters:
+
+- dead simple
+- easy to debug
+- good baseline for testing endpoint visibility
+
+Why it is noisy:
+
+- obvious API sequence
+- obvious memory permission behavior
+- easy to correlate with target process context
+
+## 2) Thread context hijacking
+
+Instead of creating a new thread, hijack an existing one:
+
+1. find target thread
+2. suspend it
+3. read/write thread context
+4. redirect `EIP` or `RIP`
+5. resume
+
+```c
+SuspendThread(hThread);
+ctx.ContextFlags = CONTEXT_FULL;
+GetThreadContext(hThread, &ctx);
+ctx.Rip = (DWORD_PTR)pRemoteCode;  // x64
+SetThreadContext(hThread, &ctx);
+ResumeThread(hThread);
+```
+
+Why teams use it:
+
+- no brand-new remote thread object
+- can blend into existing thread activity
+
+Failure mode:
+
+- hijacked thread state can be inconsistent
+- target process may crash after payload returns
+
+If you do this in production tooling, you need explicit context restoration strategy.
+
+## 3) Section mapping (MapView / shared section)
+
+This pattern avoids direct `WriteProcessMemory` by using a shared section:
+
+1. `NtCreateSection`
+2. map local view
+3. copy payload into local view
+4. map remote view in target process
+5. execute from remote view
+
+```c
+NtCreateSection(&hSection, SECTION_ALL_ACCESS, NULL, (PLARGE_INTEGER)&payload_len, PAGE_EXECUTE_READWRITE, SEC_COMMIT, NULL);
+NtMapViewOfSection(hSection, GetCurrentProcess(), &pLocalView, NULL, NULL, NULL, (SIZE_T*)&payload_len, ViewUnmap, NULL, PAGE_READWRITE);
+memcpy(pLocalView, payload, payload_len);
+NtMapViewOfSection(hSection, hProc, &pRemoteView, NULL, NULL, NULL, (SIZE_T*)&payload_len, ViewUnmap, NULL, PAGE_EXECUTE_READ);
+RtlCreateUserThread(hProc, NULL, FALSE, 0, 0, 0, pRemoteView, 0, &hThread, &cid);
+```
+
+Why it is useful:
+
+- payload transfer does not require repeated write API calls into target
+- good foundation for staged shared-memory workflows
+
+Tradeoff:
+
+- native API usage profile is still suspicious in many environments
+
+## 4) APC injection
+
+Queue payload as an APC callback into a target thread:
+
+```c
+QueueUserAPC((PAPCFUNC)pRemoteCode, hThread, NULL);
+```
+
+This has one painful dependency: the target thread must enter an alertable state (`SleepEx`, `WaitForSingleObjectEx`, and friends).
+
+So APC is often "wait and pray" unless you control thread behavior.
+
+Operationally:
+
+- can be clean in controlled processes
+- unpredictable timing in real targets
+
+## 5) Early Bird APC
+
+Create a new process suspended, inject early, queue APC on its primary thread, then resume.
+
+```c
+CreateProcessA(NULL, "notepad.exe", NULL, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &si, &pi);
+VirtualAllocEx(pi.hProcess, NULL, payload_len, MEM_COMMIT, PAGE_EXECUTE_READ);
+WriteProcessMemory(pi.hProcess, pRemoteCode, payload, payload_len, NULL);
+QueueUserAPC((PAPCFUNC)pRemoteCode, pi.hThread, NULL);
+ResumeThread(pi.hThread);
+```
+
+Why it exists:
+
+- run before many userland hooks and module behaviors fully settle
+
+Reality:
+
+- still detectable
+- still leaves process creation + injection telemetry
+
+## Picking the pattern
+
+I choose based on objective:
+
+- **Fast lab validation**: classic remote thread
+- **No new thread object preference**: context hijack
+- **Shared-memory architecture**: section mapping
+- **Specific thread execution path**: APC
+- **Earliest lifecycle trigger**: Early Bird
+
+I also test all variants in the same target environment. Reliability differences are often bigger than stealth differences.
+
+## The part people skip
+
+Most writeups stop at "payload executed." The hard part is post-execution stability:
+
+- thread cleanup
+- context restoration
+- process continuity
+- minimizing artifacts after completion
+
+If the target process crashes, your operator story collapses even when execution succeeded.
+
+Next part moves from in-memory injection to disk-level tampering: backdooring existing PE files with code caves and flow restoration.

