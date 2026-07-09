@@ -48,10 +48,12 @@ At load time the loader walks each descriptor, finds the DLL, resolves each name
 via that DLL's export directory, and writes the real address into the IAT. By the time
 `main()` runs, every call through the IAT already has the correct address in place.
 
+PE-Bear maps this visually: each `IMAGE_IMPORT_DESCRIPTOR` links the DLL name, `OriginalFirstThunk` (INT), and `FirstThunk` (IAT) for every imported function:
+
 <figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/importtable/c15a5466c7b24624a2589dbc119a0fab.png" alt="Import descriptor and thunk layout" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">Import descriptor and thunk layout</figcaption>
+  <img src="/resources/importtable/c15a5466c7b24624a2589dbc119a0fab.png" alt="PE-Bear import descriptor with INT and IAT thunks" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
+
 ## The IAT as a map of your intentions
 
 Here's the offensive implication: **the IAT is a static, readable declaration of everything
@@ -82,14 +84,15 @@ Detection for the IAT hook itself is equally simple: compare each IAT entry agai
 address the export directory of the target DLL says the function should be at. Any
 mismatch is a hook. Both attackers and defenders use this check.
 
+The first diagram shows an EDR overwriting an IAT slot so calls route through its stub. The second shows comparing the IAT entry against the export directory address to detect the mismatch:
+
 <figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/importtable/4878a87833ae47858903013da5717034.png" alt="IAT hook redirection flow" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">IAT hook redirection flow</figcaption>
+  <img src="/resources/importtable/4878a87833ae47858903013da5717034.png" alt="IAT slot overwritten to redirect through EDR hook stub" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 <figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/importtable/dc341b052f404903bcc193c5988fa507.png" alt="IAT integrity mismatch check" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">IAT integrity mismatch check</figcaption>
+  <img src="/resources/importtable/dc341b052f404903bcc193c5988fa507.png" alt="Comparing IAT entry against export directory to detect hook" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
+
 ## Resolving APIs without touching the IAT
 
 The standard approach: don't use the IAT at all. Resolve everything yourself at runtime,
@@ -117,10 +120,12 @@ LPVOID mem = pVirtualAlloc(NULL, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_
 The compiler sees a function-pointer call, not an import. Nothing goes in the IAT.
 The binary has no static declaration that it ever called `VirtualAlloc`.
 
+In a debugger, the call goes through a function pointer resolved at runtime. No import table entry exists for `VirtualAlloc` in the binary's static view:
+
 <figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/importtable/e87af589e4a94adc85bb160ff621dbc1.png" alt="Runtime API resolution example" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">Runtime API resolution example</figcaption>
+  <img src="/resources/importtable/e87af589e4a94adc85bb160ff621dbc1.png" alt="Runtime-resolved VirtualAlloc call via function pointer" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
+
 ## Runtime API hashing: one step further
 
 The above still leaves the string `"VirtualAlloc"` in your binary's `.rdata`, which a
@@ -142,10 +147,12 @@ No string in the binary. The hash constant is meaningless without context. This 
 technique behind every "no strings" shellcode loader you'll find in the wild, and it's
 exactly what the string obfuscation in Better-RDPThief is a simpler variant of.
 
+At runtime the loader hashes each export name and compares against a precomputed constant. No plaintext API string appears anywhere in the binary:
+
 <figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/importtable/c074217dfc5e46d2bbca0731aa2147fd.png" alt="Hashed export lookup flow" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">Hashed export lookup flow</figcaption>
+  <img src="/resources/importtable/c074217dfc5e46d2bbca0731aa2147fd.png" alt="Export walk comparing ROR hashes instead of plaintext names" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
+
 ## IAT patching: the other direction
 
 The IAT is also writable during certain windows of execution (and can be made writable

@@ -31,10 +31,6 @@ That is a full PE loader in compact form.
 
 ## Stage 1: finding the image base
 
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/reflectiveloader/8bdbb97b7572491aa321453e5905e0dc.png" alt="f79c8149ce3e92f5a74000840f6ccb2e.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">f79c8149ce3e92f5a74000840f6ccb2e.png</figcaption>
-</figure>
 Classic pattern:
 
 - get current return address
@@ -47,30 +43,14 @@ The tiny helper often looks like:
 __declspec(noinline) ULONG_PTR caller(void) { return (ULONG_PTR)_ReturnAddress(); }
 ```
 
-From that address, the loader walks backward until DOS and NT signatures match expected layout.
+From that address, the loader walks backward until DOS and NT signatures match expected layout. In the reflective loader source, the current address is cast to `PIMAGE_DOS_HEADER` and `e_magic` is checked for `MZ` before following `e_lfanew` to the NT headers.
+
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/reflectiveloader/8bdbb97b7572491aa321453e5905e0dc.png" alt="Reflective loader walking backward to find MZ and PE signatures" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
 
 ## Stage 2: resolving kernel exports without imports
 
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/reflectiveloader/6fa8174de209451b8a9242ecdc938e07.png" alt="7d513de5fe1f4e2793794c4f07ee991b.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">7d513de5fe1f4e2793794c4f07ee991b.png</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/reflectiveloader/6985afe7adf642c089b47982d47f138c.png" alt="86b24fdfaeaff3762296a2f69d01cc8d.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">86b24fdfaeaff3762296a2f69d01cc8d.png</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/reflectiveloader/7bae805428844b6baf174af44374ad78.png" alt="804292cdf16fc46c0e2ac965811ca182.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">804292cdf16fc46c0e2ac965811ca182.png</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/reflectiveloader/48de28fb50434f7e8a36b477c6f2d986.png" alt="edd28dc5919a4e0f002546fe5b5549ce.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">edd28dc5919a4e0f002546fe5b5549ce.png</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/reflectiveloader/36702a4170fb4a67b50064134e4d6700.png" alt="6f35b9531db26fef2a0ab1143a13c38a.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">6f35b9531db26fef2a0ab1143a13c38a.png</figcaption>
-</figure>
 The loader walks PEB module lists to locate `kernel32.dll` and `ntdll.dll`, then parses export tables to resolve function pointers it needs (`LoadLibraryA`, `GetProcAddress`, `VirtualAlloc`, `NtFlushInstructionCache`, and similar).
 
 This is the same primitive from earlier posts:
@@ -80,12 +60,26 @@ This is the same primitive from earlier posts:
 
 Many loaders use ROR hash matching for module and function names to avoid plaintext strings.
 
-## Stage 3: mapping image to new memory
+First, the loader reads the PEB and reaches the loaded module list. It hashes each module name until `kernel32.dll` matches, then walks that module's export directory to resolve `LoadLibraryA`, `GetProcAddress`, and `VirtualAlloc`. A second pass does the same for `ntdll.dll` to find `NtFlushInstructionCache`.
 
 <figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/reflectiveloader/d8f5da69cc874c6980cffe1773a350dc.png" alt="e7e02583dd6a30b29145520793de4204.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">e7e02583dd6a30b29145520793de4204.png</figcaption>
+  <img src="/resources/reflectiveloader/6fa8174de209451b8a9242ecdc938e07.png" alt="PEB offset selection for x86 vs x64" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/reflectiveloader/6985afe7adf642c089b47982d47f138c.png" alt="First entry in PEB module list" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/reflectiveloader/7bae805428844b6baf174af44374ad78.png" alt="ROR hash comparison against KERNEL32DLL_HASH" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/reflectiveloader/48de28fb50434f7e8a36b477c6f2d986.png" alt="Export directory walk for kernel32 functions" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/reflectiveloader/36702a4170fb4a67b50064134e4d6700.png" alt="ntdll.dll base and NtFlushInstructionCache resolution" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+## Stage 3: mapping image to new memory
+
 Once basic APIs are available:
 
 - reserve/commit destination memory for `SizeOfImage`
@@ -93,6 +87,18 @@ Once basic APIs are available:
 - copy each section to `ImageBase + section.VirtualAddress`
 
 At this point the image exists at a new base, but it is not runnable yet.
+
+`VirtualAlloc` reserves RWX memory at the new base, then headers are copied into place:
+
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/reflectiveloader/d8f5da69cc874c6980cffe1773a350dc.png" alt="VirtualAlloc and header copy in reflective loader" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+Each section is then copied from file offset to its `VirtualAddress` in the mapped image:
+
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/reflectiveloader/05f22fe756934fe4b870edb8f43f3c9b.png" alt="Section copy loop in reflective loader" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
 
 ## Stage 4: import processing
 
@@ -105,12 +111,17 @@ The loader walks `IMAGE_IMPORT_DESCRIPTOR` entries:
 
 No import fixups, no execution.
 
-## Stage 5: relocations
+The import directory is located from the data directories, then each descriptor is walked. `LoadLibraryA` pulls in dependent DLLs; `GetProcAddress` (or ordinal lookup) fills each thunk slot.
 
 <figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/reflectiveloader/05f22fe756934fe4b870edb8f43f3c9b.png" alt="5038b6149dbe686b32cbfee907a2a2ff.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">5038b6149dbe686b32cbfee907a2a2ff.png</figcaption>
+  <img src="/resources/reflectiveloader/1fccfae17d8a41e5ae3044d551e8cd58.png" alt="Import descriptor walk and LoadLibraryA call" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/reflectiveloader/8b7851139bc84828b113297dfa62ac61.png" alt="Ordinal and name resolution into FirstThunk" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+## Stage 5: relocations
+
 If new base differs from preferred `ImageBase`, relocation delta is:
 
 ```text
@@ -121,11 +132,44 @@ Then walk relocation blocks and patch each relocation slot with `delta`.
 
 This step is where many custom loaders break under ASLR-heavy conditions. Works in one test box, crashes in another.
 
+In PE-Bear, the Optional Header `DllCharacteristics` flag "DLL can move" tells you ASLR is enabled and relocations will be needed. The `BaseReloc` tab shows relocation blocks: each `VirtualAddress`, `SizeOfBlock`, and type/offset entries that the loader must patch with the delta.
+
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/reflectiveloader/ab7288a148d64018b909dbfd7efd8e28.png" alt="PE-Bear DLL can move flag in Optional Header" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/reflectiveloader/8fa125dfb17c45dabe6e17cbd26c2e96.png" alt="PE-Bear BaseReloc table entries" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/reflectiveloader/64374ea20abe4ae7a83e2b3f8d194161.png" alt="Relocation block structure with type and offset" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+A practical delta calculation on a loaded binary: actual base minus preferred `ImageBase`, then add the relocation RVA from the first block.
+
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/reflectiveloader/056919fd6e92494dbc6d72fd8c1638c2.png" alt="Loaded notepad.exe base address in memory" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/reflectiveloader/0022396f1a0b40baa8532c8c56ddbb9e.png" alt="Relocation RVA from first BaseReloc block" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+The loader code calculates delta and iterates each relocation block, patching `IMAGE_REL_BASED_DIR64` entries on x64:
+
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/reflectiveloader/28fd5570895c41dfb9d0f5bc57b115a6.png" alt="Relocation delta calculation and block iteration in loader" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
 ## Stage 6: instruction cache and entry point
 
 After writes and patching, flush instruction cache and transfer to entry point (`DllMain` or exported routine depending on chain design).
 
 If this transition succeeds and host process stays stable, reflective load is complete.
+
+The entry point RVA is read from the optional header, `NtFlushInstructionCache` clears stale code from the CPU cache, then control transfers to `DllMain` or the chosen export.
+
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/reflectiveloader/1c4adad01b3c492380cf149a1dcd1d41.png" alt="Entry point transfer and NtFlushInstructionCache call" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
 
 ## About sRDI
 
@@ -141,16 +185,17 @@ Typical sequence:
 4. DLL mapped and initialized in-memory
 5. optional export invoked with user data
 
-## Why I still care about this in 2026
+The sRDI Python script converts a DLL into position-independent shellcode. Options include clearing headers and obfuscating imports on top of the reflective load.
 
 <figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/reflectiveloader/1fccfae17d8a41e5ae3044d551e8cd58.png" alt="f96ddca0cd9c36021b332c8d70d17bae.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">f96ddca0cd9c36021b332c8d70d17bae.png</figcaption>
+  <img src="/resources/reflectiveloader/d8bfef4a9e4d41a8a4d70e1af7f1f50d.png" alt="sRDI conversion script options" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 <figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/reflectiveloader/8b7851139bc84828b113297dfa62ac61.png" alt="808970e0f526cc1b9f7d56468aab076b.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">808970e0f526cc1b9f7d56468aab076b.png</figcaption>
+  <img src="/resources/reflectiveloader/3542bfbd18114acb92d54e1aafab9da5.png" alt="sRDI output shellcode ready for injection" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
+
+## Basic injection workflow context
+
 Reflective loading is not new. It is still foundational because:
 
 - it teaches full in-memory PE lifecycle
@@ -161,42 +206,6 @@ Also, defenders increasingly model loader behavior. Understanding this pipeline 
 
 ## Common failure points
 
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/reflectiveloader/ab7288a148d64018b909dbfd7efd8e28.png" alt="3665ba00691f70e98aedd02cfe4e3b85.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">3665ba00691f70e98aedd02cfe4e3b85.png</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/reflectiveloader/8fa125dfb17c45dabe6e17cbd26c2e96.png" alt="a76130e5cead51d5e8aaa4e9f5b2b3b1.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">a76130e5cead51d5e8aaa4e9f5b2b3b1.png</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/reflectiveloader/64374ea20abe4ae7a83e2b3f8d194161.png" alt="d8f9d6ca893f3b28f581f32f6f5ec91e.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">d8f9d6ca893f3b28f581f32f6f5ec91e.png</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/reflectiveloader/056919fd6e92494dbc6d72fd8c1638c2.png" alt="7e1ead079a01779b0866d0b0146f60eb.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">7e1ead079a01779b0866d0b0146f60eb.png</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/reflectiveloader/0022396f1a0b40baa8532c8c56ddbb9e.png" alt="a43013718a0e2bca3da2edcbed01a314.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">a43013718a0e2bca3da2edcbed01a314.png</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/reflectiveloader/28fd5570895c41dfb9d0f5bc57b115a6.png" alt="7562b1fa083481513a47a6259f03855f.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">7562b1fa083481513a47a6259f03855f.png</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/reflectiveloader/1c4adad01b3c492380cf149a1dcd1d41.png" alt="d7e8f88c063458897d6c78e047819d46.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">d7e8f88c063458897d6c78e047819d46.png</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/reflectiveloader/d8bfef4a9e4d41a8a4d70e1af7f1f50d.png" alt="cac5293e836f1412fb3bcea9e8fe69f7.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">cac5293e836f1412fb3bcea9e8fe69f7.png</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/reflectiveloader/3542bfbd18114acb92d54e1aafab9da5.png" alt="179cfd01ac466bf6e233bad1eccb7096.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">179cfd01ac466bf6e233bad1eccb7096.png</figcaption>
-</figure>
 - wrong assumptions on architecture-specific structures
 - incomplete import handling (ordinal edge cases)
 - relocation logic that skips block types

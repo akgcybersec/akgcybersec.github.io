@@ -26,25 +26,29 @@ The offset is the original image length.
 
 ## Building the carrier
 
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/malware/saturn-xxd.jpg" alt="Saturn.jpg with XXD" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">Saturn.jpg with XXD</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/malware/msgbox-size.png" alt="msgbox" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">msgbox</figcaption>
-</figure>
 Get image byte count:
 
 ```bash
 xxd -i saturn.jpg
 ```
 
+`xxd -i` dumps the file as a C byte array and prints the total size at the end. That size value becomes the extraction offset used later in the loader:
+
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/saturn-xxd.jpg" alt="xxd -i saturn.jpg output showing the image byte array and its total size" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
 Get payload byte count:
 
 ```bash
 xxd -i msgbox64.bin
 ```
+
+Same command on the shellcode binary — note the size separately, this is `payload_len` in the extraction code:
+
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/msgbox-size.png" alt="xxd -i msgbox64.bin output showing shellcode size in bytes" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
 
 Append payload to image:
 

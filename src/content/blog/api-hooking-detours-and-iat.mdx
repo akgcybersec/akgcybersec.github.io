@@ -34,6 +34,18 @@ target_api_entry -> JMP hook_handler
 trampoline -> original_bytes + JMP target_api_entry+patched_len
 ```
 
+The diagram below from the original Detours research paper shows the control flow with and without interception. Left: normal direct call. Right: with a detour, the source hits the hook handler first, then optionally continues through the trampoline to the original target.
+
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/apihooking/42faa4a46fe445808127104c0fbb1875.png" alt="Detours control flow: direct call vs. intercepted call through hook handler and trampoline" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+In practice the trampoline holds the displaced original bytes followed by a jump back into the target function past the patched prologue. This is what lets you call the original behaviour cleanly from inside the hook:
+
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/apihooking/56b12d4d77e046f4a7a2880e5f9a38e3.png" alt="Trampoline detail: target function with JMP overwrite, trampoline with original bytes and return jump" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
 Why I like it:
 
 - works even if caller does not use IAT for that API path
@@ -47,14 +59,6 @@ Operational downside:
 
 ## IAT hooking
 
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/apihooking/42faa4a46fe445808127104c0fbb1875.png" alt="116325bcdc0b237085549c8ff74a1faa.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">116325bcdc0b237085549c8ff74a1faa.png</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/apihooking/56b12d4d77e046f4a7a2880e5f9a38e3.png" alt="34b1a6392f813dd825524061ebc34577.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">34b1a6392f813dd825524061ebc34577.png</figcaption>
-</figure>
 IAT hooking modifies import slots in the consumer module, not the callee module's code bytes.
 
 Flow:

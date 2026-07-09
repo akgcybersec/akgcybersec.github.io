@@ -1,5 +1,5 @@
 ---
-title: "Code injection patterns I still see in 2026"
+title: "Code injection patterns I still see in real operations"
 description: "Classic remote thread injection, thread context hijacking, section mapping, APC, and Early Bird: when each pattern works and where it breaks."
 date: 2023-04-08
 seriesSlug: "malware-notes"
@@ -105,10 +105,12 @@ Tradeoff:
 
 ## 4) APC injection
 
+APC injection queues your payload as a callback on a target thread's APC queue. The thread must enter an alertable wait state before the callback fires.
+
 <figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/codeinjection/e0ab72ff5d014f61a63a5687a338651b.png" alt="0adf2cf478ac35988e2761de56e01e0a.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">0adf2cf478ac35988e2761de56e01e0a.png</figcaption>
+  <img src="/resources/codeinjection/e0ab72ff5d014f61a63a5687a338651b.png" alt="APC injection flow: QueueUserAPC, alertable wait, callback execution" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
+
 Queue payload as an APC callback into a target thread:
 
 ```c
@@ -126,10 +128,12 @@ Operationally:
 
 ## 5) Early Bird APC
 
+Early Bird creates a new process suspended, injects before main thread runs, queues APC on the primary thread, then resumes. The payload runs before most userland hooks settle.
+
 <figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/codeinjection/63b90aa837a84e268461b717b52ad6dc.png" alt="31bc49714d0cadfccbd52b96b8f211b2.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">31bc49714d0cadfccbd52b96b8f211b2.png</figcaption>
+  <img src="/resources/codeinjection/63b90aa837a84e268461b717b52ad6dc.png" alt="Early Bird APC injection sequence diagram" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
+
 Create a new process suspended, inject early, queue APC on its primary thread, then resume.
 
 ```c

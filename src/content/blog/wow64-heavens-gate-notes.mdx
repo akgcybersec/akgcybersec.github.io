@@ -15,19 +15,11 @@ They are not random. They are architecture boundary mistakes.
 
 ## What WoW64 is
 
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/wow64/b3e0be63fba44b2f807d6724a5847e49.png" alt="2b417b2efb60226287494f5564004015.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">2b417b2efb60226287494f5564004015.png</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/wow64/374abee2b0ea4dbfba50930511b4394e.png" alt="0ab17590a3151298b198dbbadbf17d58.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">0ab17590a3151298b198dbbadbf17d58.png</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/wow64/81223fe671f54ac7826d4f835101b604.png" alt="e60fb036ee73a0cfbbead618854f346a.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">e60fb036ee73a0cfbbead618854f346a.png</figcaption>
-</figure>
 WoW64 is the compatibility layer that lets 32-bit user-mode processes run on 64-bit Windows.
+
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/wow64/b3e0be63fba44b2f807d6724a5847e49.png" alt="WoW64 subsystem overview diagram" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
 
 Key components:
 
@@ -37,21 +29,30 @@ Key components:
 
 A WoW64 process can host both 32-bit and 64-bit NTDLL-related behavior paths. That split is the root of many tooling bugs.
 
-## Why Heaven's Gate matters
+On a 32-bit `notepad.exe`, Process Hacker shows `wow64.dll`, `wow64cpu.dll`, `wow64win.dll`, plus both 32-bit and 64-bit `ntdll.dll` loaded side by side:
 
 <figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/wow64/96f84d7aff364187b33af32454f28e86.png" alt="5f0a69cff92de2a78f6f6b81adf3760a.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">5f0a69cff92de2a78f6f6b81adf3760a.png</figcaption>
+  <img src="/resources/wow64/374abee2b0ea4dbfba50930511b4394e.png" alt="Process Hacker module list for 32-bit notepad under WoW64" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 <figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/wow64/be9d504726f04cd4ae02c12fd4d64094.png" alt="a88985867abde48cee948600074fa130.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">a88985867abde48cee948600074fa130.png</figcaption>
+  <img src="/resources/wow64/81223fe671f54ac7826d4f835101b604.png" alt="32-bit and 64-bit ntdll.dll in WoW64 process" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/wow64/c913a9d28aad4a349353f6930c7e6b76.png" alt="ae6a1200c33b72314f20f43feb5f5987.png" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">ae6a1200c33b72314f20f43feb5f5987.png</figcaption>
-</figure>
+
+## Why Heaven's Gate matters
+
 A 32-bit process under WoW64 can transition to 64-bit execution context using far control transfer mechanics. This transition path is popularly called Heaven's Gate.
+
+In x32dbg on 32-bit `notepad.exe`, open `ntdll.dll` and navigate to `NtCreateThread`. The disassembly shows `Wow64SystemServiceCall` stubs. Following one of these jumps lands on `Wow64Transition`, where the far jump `jmp far 33:...` switches from the 32-bit code segment (`0x23`) to the 64-bit segment (`0x33`).
+
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/wow64/96f84d7aff364187b33af32454f28e86.png" alt="x32dbg NtCreateThread with Wow64SystemServiceCall stubs" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/wow64/be9d504726f04cd4ae02c12fd4d64094.png" alt="x32dbg following Wow64SystemServiceCall into ntdll" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/wow64/c913a9d28aad4a349353f6930c7e6b76.png" alt="x32dbg Wow64Transition far jmp to 64-bit segment" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
 
 In debugger views, you often see this around WoW64 system-service trampolines.
 

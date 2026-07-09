@@ -31,51 +31,28 @@ The cost is size. Big payloads do not fit.
 
 ## Finding code caves
 
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/malware/Cminer1.png" alt="Cminer1" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">Cminer1</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/malware/PETool1.gif" alt="PE Tools" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">PE Tools</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/malware/modifysection.png" alt="PETool Section" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">PETool Section</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/malware/x64dbg1.gif" alt="x64DGB1" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB1</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/malware/x64dbg2.gif" alt="x64DGB2" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB2</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/malware/x64dbg3.png" alt="x64DGB3" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB3</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/malware/x64dbg5.gif" alt="x64DGB5" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB5</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/malware/x64dbg6.gif" alt="x64DGB6" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB6</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/malware/x64dbg7.gif" alt="x64DGB7" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB7</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/malware/x64dbg8.gif" alt="x64DGB8" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB8</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/malware/x64dbg9.gif" alt="x64DGB9" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB9</figcaption>
-</figure>
 Tools like `Cminer`, PE-Bear, and x64dbg make cave discovery straightforward.
+
+Run Cminer against a target like `putty.exe` to list caves by section, size, and file offset. The `.data` section often has large writable caves; `.text` has executable ones.
+
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/Cminer1.png" alt="Cminer code cave scan results for putty.exe" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+PE-Bear shows section characteristics and lets you extend or add sections if a cave is too small:
+
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/PETool1.gif" alt="PE-Bear section view and characteristics" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/modifysection.png" alt="PE-Bear extend or add section dialog" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+In x64dbg, open the target PE and inspect each section. Scroll to the end of `.text` to find slack space and note the cave start address.
+
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/x64dbg1.gif" alt="x64dbg section navigation" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
 
 What I actually check:
 
@@ -96,6 +73,36 @@ Typical flow:
 4. execute displaced original instructions
 5. jump back after the detour site
 
+Note the code cave address in `.text`, then find the PE entry point under the Breakpoints tab. Save the first few instructions at the entry point; you will need them to restore flow after the payload runs.
+
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/x64dbg2.gif" alt="x64dbg code cave address in .text section" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/x64dbg3.png" alt="x64dbg entry point in Breakpoints tab" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+Drop a breakpoint at the cave start, then patch the entry point with a `jmp` to the cave. NOP out the cave region so execution has a clean runway. Patch the PE (`Ctrl+P`) at each step so you can roll back if something breaks.
+
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/x64dbg5.gif" alt="x64dbg breakpoint at code cave start" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/x64dbg6.gif" alt="x64dbg jmp patch at entry point to cave" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/x64dbg7.gif" alt="x64dbg NOP clear of code cave region" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/x64dbg8.gif" alt="x64dbg patch PE to save progress" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+Before injecting shellcode, save CPU state with `pushad` / `pushfd`. Then paste the payload bytes into the cave.
+
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/x64dbg9.gif" alt="x64dbg shellcode pasted into code cave" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
 Conceptually:
 
 ```asm
@@ -114,11 +121,16 @@ This looks simple on paper. Most failures are state corruption.
 
 ## State preservation and stack repair
 
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/malware/x64dbg10.gif" alt="x64DGB10" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB10</figcaption>
-</figure>
 If payload changes stack/register state and you do not restore cleanly, the host process eventually crashes.
+
+Record `ESP` after `pushad`/`pushfd`, then again after the shellcode runs. The difference is the stack delta you must repair with `add esp, <delta>` before `popfd`/`popad`.
+
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/x64dbg10.gif" alt="x64dbg ESP before shellcode execution" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/x64dbg11.gif" alt="x64dbg ESP after shellcode execution" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
 
 In old x86 cave workflows, a common pattern is:
 
@@ -135,12 +147,23 @@ The key is calculating actual stack delta, not guessing. Measure pre-payload and
 
 I treat this as mandatory validation, not an optional cleanup step.
 
-## Why PE backdooring still matters
+After aligning the stack, restore flags and registers, then put back the original instructions that the entry-point `jmp` overwrote:
 
 <figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/malware/x64dbg11.gif" alt="x64DGB11" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB11</figcaption>
+  <img src="/resources/malware/x64dbg12.png" alt="x64dbg popfd and popad after stack repair" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/x64dbg13.png" alt="x64dbg restoring displaced entry point instructions" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+Finally, jump back into the original code path past the restored prologue:
+
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/malware/x64dbg14.png" alt="x64dbg jmp back to original execution flow" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+## Why PE backdooring still matters
+
 Even with modern in-memory tradecraft, PE backdooring is still useful for:
 
 - understanding loader and section behavior deeply
@@ -151,14 +174,6 @@ It is also a great way to learn where your own assumptions are wrong about secti
 
 ## Reliability checklist I use
 
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/malware/x64dbg12.png" alt="x64DGB12" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB12</figcaption>
-</figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/malware/x64dbg13.png" alt="x64DGB13" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB13</figcaption>
-</figure>
 - patch in small increments, save often
 - keep a clean known-good intermediate build
 - record original displaced instructions before changing anything
@@ -169,10 +184,6 @@ Most failed backdoors are not detection failures. They are engineering mistakes 
 
 ## Limits
 
-<figure style="text-align:center; margin: 1.25rem 0;">
-  <img src="/resources/malware/x64dbg14.png" alt="x64DGB14" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
-  <figcaption style="margin-top:0.5rem; font-size:0.95rem; opacity:0.85;">x64DGB14</figcaption>
-</figure>
 Code-cave backdooring is not a universal stealth technique.
 
 - Structural anomalies can be detected

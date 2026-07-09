@@ -6,6 +6,7 @@ import { Icon } from 'astro-icon/components';
 const posts = (await getCollection('blog', ({ data }) => !data.draft)).sort(
   (a, b) => b.data.date.getTime() - a.data.date.getTime()
 );
+const latestPost = posts[0];
 
 const seriesMap = new Map<string, typeof posts>();
 for (const post of posts) {
@@ -37,6 +38,7 @@ const seriesGroups = [...seriesMap.entries()]
 
 const seriesPostIds = new Set(seriesGroups.flatMap((group) => group.posts.map((post) => post.id)));
 const otherPosts = posts.filter((post) => !seriesPostIds.has(post.id));
+const standalonePosts = otherPosts.filter((post) => post.id !== latestPost?.id);
 
 const formatter = new Intl.DateTimeFormat('en-US', {
   year: 'numeric',
@@ -59,79 +61,47 @@ const formatter = new Intl.DateTimeFormat('en-US', {
       </div>
     ) : (
       <div class="space-y-8">
-        {seriesGroups.length > 0 && (
-          <div class="space-y-8">
-            {seriesGroups.map((series, index) => (
-              <details class="card p-5 sm:p-6" open={index === 0}>
-                <summary class="list-none cursor-pointer">
-                  <div class="flex items-start justify-between gap-4">
-                    <div>
-                      <div class="mb-2 flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-[color:var(--color-text-muted)]">
-                        <Icon name="lucide:book-marked" class="w-4 h-4 text-[color:var(--color-accent)]" />
-                        Series
-                      </div>
-                      <h2 class="font-display text-2xl font-semibold text-[color:var(--color-text)]">
-                        {series.title}
-                      </h2>
-                      {series.description && (
-                        <p class="mt-2 text-sm text-[color:var(--color-text-dim)] max-w-3xl">
-                          {series.description}
-                        </p>
-                      )}
-                    </div>
-                    <div class="flex items-center gap-3 shrink-0 pt-1">
-                      <span class="font-mono text-xs text-[color:var(--color-text-muted)]">
-                        {series.posts.length} posts
-                      </span>
-                      <Icon
-                        name="lucide:chevron-down"
-                        class="w-4 h-4 text-[color:var(--color-text-muted)]"
-                      />
-                    </div>
-                  </div>
-                </summary>
-
-                <div class="space-y-3 mt-4">
-                  {series.posts.map((post) => (
-                    <a
-                      href={`/blog/${post.id}/`}
-                      class="border border-[color:var(--color-border)] rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-baseline gap-3 sm:gap-8 group hover:border-[color:var(--color-accent)]/40 transition"
-                    >
-                      <div class="font-mono text-xs text-[color:var(--color-text-muted)] shrink-0 sm:w-28 sm:pt-1">
-                        Part {post.data.seriesPart ?? '-'}
-                      </div>
-                      <div class="flex-1 min-w-0">
-                        <h3 class="font-display text-lg font-semibold text-[color:var(--color-text)] group-hover:text-[color:var(--color-accent)] transition">
-                          {post.data.title}
-                        </h3>
-                        <p class="mt-1 text-sm text-[color:var(--color-text-dim)]">
-                          {post.data.description}
-                        </p>
-                        <div class="mt-2 flex flex-wrap gap-1.5">
-                          {post.data.tags.filter((tag) => tag !== 'windows-internals-series').map((tag) => (
-                            <span class="tag">{tag}</span>
-                          ))}
-                        </div>
-                      </div>
-                      <Icon
-                        name="lucide:arrow-up-right"
-                        class="w-4 h-4 text-[color:var(--color-text-muted)] group-hover:text-[color:var(--color-accent)] transition sm:mt-1"
-                      />
-                    </a>
+        {latestPost && (
+          <a
+            href={`/blog/${latestPost.id}/`}
+            class="card block p-5 sm:p-6 group border-[color:var(--color-accent)]/40"
+          >
+            <div class="mb-3 flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-[color:var(--color-accent)]">
+              <Icon name="lucide:sparkles" class="w-4 h-4" />
+              Latest Post
+            </div>
+            <div class="flex flex-col sm:flex-row sm:items-baseline gap-4 sm:gap-8">
+              <div class="font-mono text-xs text-[color:var(--color-text-muted)] shrink-0 sm:w-28 sm:pt-1">
+                {formatter.format(latestPost.data.date)}
+              </div>
+              <div class="flex-1 min-w-0">
+                <h2 class="font-display text-2xl font-semibold text-[color:var(--color-text)] group-hover:text-[color:var(--color-accent)] transition">
+                  {latestPost.data.title}
+                </h2>
+                <p class="mt-2 text-sm text-[color:var(--color-text-dim)]">
+                  {latestPost.data.description}
+                </p>
+                <div class="mt-3 flex flex-wrap gap-1.5">
+                  {latestPost.data.tags.map((tag) => (
+                    <span class="tag">{tag}</span>
                   ))}
                 </div>
-              </details>
-            ))}
-          </div>
+              </div>
+              <Icon
+                name="lucide:arrow-up-right"
+                class="w-4 h-4 text-[color:var(--color-text-muted)] group-hover:text-[color:var(--color-accent)] transition sm:mt-1"
+              />
+            </div>
+          </a>
         )}
 
-        {otherPosts.length > 0 && (
+        {standalonePosts.length > 0 && (
           <div>
             <div class="mb-4 font-mono text-xs uppercase tracking-wider text-[color:var(--color-text-muted)]">
               Standalone Notes
             </div>
             <div class="space-y-4">
-              {otherPosts.map((post) => (
+              {standalonePosts.map((post) => (
                 <a
                   href={`/blog/${post.id}/`}
                   class="card flex flex-col sm:flex-row sm:items-baseline gap-4 sm:gap-8 group"
@@ -157,6 +127,74 @@ const formatter = new Intl.DateTimeFormat('en-US', {
                     class="w-4 h-4 text-[color:var(--color-text-muted)] group-hover:text-[color:var(--color-accent)] transition sm:mt-1"
                   />
                 </a>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {seriesGroups.length > 0 && (
+          <div>
+            <div class="mb-4 font-mono text-xs uppercase tracking-wider text-[color:var(--color-text-muted)]">
+              Series
+            </div>
+            <div class="space-y-8">
+              {seriesGroups.map((series) => (
+                <details class="card p-5 sm:p-6">
+                  <summary class="list-none cursor-pointer">
+                    <div class="flex items-start justify-between gap-4">
+                      <div>
+                        <h2 class="font-display text-2xl font-semibold text-[color:var(--color-text)]">
+                          {series.title}
+                        </h2>
+                        {series.description && (
+                          <p class="mt-2 text-sm text-[color:var(--color-text-dim)] max-w-3xl">
+                            {series.description}
+                          </p>
+                        )}
+                      </div>
+                      <div class="flex items-center gap-3 shrink-0 pt-1">
+                        <span class="font-mono text-xs text-[color:var(--color-text-muted)]">
+                          {series.posts.length} posts
+                        </span>
+                        <Icon
+                          name="lucide:chevron-down"
+                          class="w-4 h-4 text-[color:var(--color-text-muted)]"
+                        />
+                      </div>
+                    </div>
+                  </summary>
+
+                  <div class="space-y-3 mt-4">
+                    {series.posts.map((post) => (
+                      <a
+                        href={`/blog/${post.id}/`}
+                        class="border border-[color:var(--color-border)] rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-baseline gap-3 sm:gap-8 group hover:border-[color:var(--color-accent)]/40 transition"
+                      >
+                        <div class="font-mono text-xs text-[color:var(--color-text-muted)] shrink-0 sm:w-28 sm:pt-1">
+                          Part {post.data.seriesPart ?? '-'}
+                          <div class="mt-1">{formatter.format(post.data.date)}</div>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                          <h3 class="font-display text-lg font-semibold text-[color:var(--color-text)] group-hover:text-[color:var(--color-accent)] transition">
+                            {post.data.title}
+                          </h3>
+                          <p class="mt-1 text-sm text-[color:var(--color-text-dim)]">
+                            {post.data.description}
+                          </p>
+                          <div class="mt-2 flex flex-wrap gap-1.5">
+                            {post.data.tags.filter((tag) => tag !== 'windows-internals-series').map((tag) => (
+                              <span class="tag">{tag}</span>
+                            ))}
+                          </div>
+                        </div>
+                        <Icon
+                          name="lucide:arrow-up-right"
+                          class="w-4 h-4 text-[color:var(--color-text-muted)] group-hover:text-[color:var(--color-accent)] transition sm:mt-1"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                </details>
               ))}
             </div>
           </div>
