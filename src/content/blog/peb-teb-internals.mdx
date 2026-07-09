@@ -1,0 +1,222 @@
+---
+title: "PEB & TEB: finding loaded modules without calling Windows APIs"
+description: "How to walk the Process Environment Block to locate any loaded DLL's base address — the foundational shellcode technique behind position-independent loaders and API-call-free implants."
+date: 2026-07-09
+tags: ["windows", "malware-dev", "internals", "shellcode", "red-team"]
+---
+
+*Part 3 of the Windows internals series. [Part 1](/blog/pe-internals/) covered PE headers and the export directory. [Part 2](/blog/iat-internals/) covered the IAT and dynamic API resolution.*
+
+The previous post ended with "find the DLL base address via PEB walk." This post delivers
+that — plus enough context to understand why shellcode authors reach for the PEB first,
+before ever considering `GetModuleHandle` or `LoadLibrary`.
+
+## What the PEB is
+
+The **Process Environment Block** is a per-process data structure maintained by the OS.
+It holds everything Windows needs to manage a running process: loaded modules, heap info,
+command-line arguments, environment variables, loader state.
+
+Its address is always accessible — no API call needed. On x64 you read it from the GS
+segment register:
+
+```nasm
+mov rax, gs:[0x60]   ; PEB*
+```
+
+On x86 it's `fs:[0x30]`. The compiler intrinsic equivalent in C:
+
+```c
+PPEB pPeb = (PPEB)__readgsqword(0x60);  // x64
+PPEB pPeb = (PPEB)__readfsdword(0x30);  // x86
+```
+
+No function call. No import. No dependency on any DLL being loaded. The segment register
+always points to the right structure. This is why shellcode can use it before a single
+API is resolved.
+
+## What the TEB is
+
+The **Thread Environment Block** lives one step up — accessible at `gs:[0x00]` (same
+segment base). It describes the currently running *thread*, and its first field is a
+pointer back to the PEB:
+
+```c
+typedef struct _TEB {
+    NT_TIB   NtTib;        // NtTib.Self = pointer to TEB itself
+    // ...
+    PPEB     ProcessEnvironmentBlock;   // at offset 0x60 in x64
+    // ...
+} TEB;
+```
+
+In practice, most shellcode skips the TEB and reads the PEB address directly from
+`gs:[0x60]`. But the TEB is where you get the current thread's stack limits, the
+thread's last error, and the thread's local storage — useful if you're writing
+a DLL or need per-thread context.
+
+## The loader module list
+
+The field in the PEB we care about most:
+
+```c
+typedef struct _PEB {
+    BYTE                    Reserved1[2];
+    BYTE                    BeingDebugged;   // anti-debug flag — more on this below
+    // ...
+    PPEB_LDR_DATA           Ldr;             // offset 0x18 (x64) — module list
+    // ...
+} PEB;
+```
+
+`Ldr` points to `PEB_LDR_DATA`, which contains three doubly-linked lists of every
+loaded module. All three lists contain the same entries, just in different orders:
+
+```c
+typedef struct _PEB_LDR_DATA {
+    ULONG      Length;
+    BOOLEAN    Initialized;
+    HANDLE     SsHandle;
+    LIST_ENTRY InLoadOrderModuleList;       // ordered by load time
+    LIST_ENTRY InMemoryOrderModuleList;     // ordered by address in memory
+    LIST_ENTRY InInitializationOrderModuleList; // ordered by DLL init call order
+} PEB_LDR_DATA;
+```
+
+Each entry in these lists is an `LDR_DATA_TABLE_ENTRY`:
+
+```c
+typedef struct _LDR_DATA_TABLE_ENTRY {
+    LIST_ENTRY  InLoadOrderLinks;
+    LIST_ENTRY  InMemoryOrderLinks;
+    LIST_ENTRY  InInitializationOrderLinks;
+    PVOID       DllBase;        // base address of the loaded module — this is what we want
+    PVOID       EntryPoint;
+    ULONG       SizeOfImage;
+    UNICODE_STRING FullDllName;
+    UNICODE_STRING BaseDllName; // just the filename, e.g. L"kernel32.dll"
+    // ...
+} LDR_DATA_TABLE_ENTRY;
+```
+
+`DllBase` is the module's base address in memory. `BaseDllName` is the filename as a
+wide string. That's everything you need to implement `GetModuleHandle` without calling it.
+
+## The PEB walk in practice
+
+A minimal implementation that finds a module by name:
+
+```c
+PVOID GetModuleBaseByName(LPCWSTR targetName) {
+    PPEB pPeb = (PPEB)__readgsqword(0x60);
+    PLIST_ENTRY head = &pPeb->Ldr->InLoadOrderModuleList;
+    PLIST_ENTRY entry = head->Flink;
+
+    while (entry != head) {
+        PLDR_DATA_TABLE_ENTRY mod = CONTAINING_RECORD(
+            entry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks
+        );
+
+        if (mod->BaseDllName.Buffer &&
+            _wcsicmp(mod->BaseDllName.Buffer, targetName) == 0) {
+            return mod->DllBase;
+        }
+
+        entry = entry->Flink;
+    }
+    return NULL;
+}
+```
+
+Usage:
+
+```c
+PVOID k32Base  = GetModuleBaseByName(L"kernel32.dll");
+PVOID ntdllBase = GetModuleBaseByName(L"ntdll.dll");
+```
+
+Combine this with the export resolver from Part 1 and you have a complete,
+import-free API resolution chain: **PEB → module base → export directory → function address.**
+The resulting code imports nothing, calls no Windows APIs to bootstrap itself, and leaves
+no trace in the IAT.
+
+This is the foundation of every position-independent shellcode loader in existence.
+
+## Shellcode variant — no wide string comparison
+
+In shellcode you often avoid the C runtime entirely, which means no `_wcsicmp`. The
+common substitute is a hash of the module name, compared at walk time. Combining
+both hashing steps — module name hash in the PEB walk, function name hash in the
+export walk — gives you a loader that contains no identifiable strings:
+
+```c
+// pseudocode — actual hash implementation varies
+PVOID GetProcByHash(DWORD moduleHash, DWORD funcHash) {
+    PPEB pPeb   = (PPEB)__readgsqword(0x60);
+    PLIST_ENTRY head  = &pPeb->Ldr->InLoadOrderModuleList;
+    PLIST_ENTRY entry = head->Flink;
+
+    while (entry != head) {
+        PLDR_DATA_TABLE_ENTRY mod = CONTAINING_RECORD(
+            entry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks
+        );
+        if (HashWStr(mod->BaseDllName.Buffer) == moduleHash) {
+            return GetExportByHash(mod->DllBase, funcHash);
+        }
+        entry = entry->Flink;
+    }
+    return NULL;
+}
+```
+
+One function, two hash inputs, returns any API from any loaded DLL. This is the pattern
+you see in public shellcode frameworks and the one you should understand before you use them.
+
+## BeingDebugged — the free anti-debug check
+
+While you're in the PEB, there's one byte worth reading for free:
+
+```c
+BYTE isDebugged = pPeb->BeingDebugged;  // offset 0x02
+```
+
+The OS sets this to `1` when a debugger is attached. It's the same value that
+`IsDebuggerPresent()` reads — that API is literally just this PEB byte check wrapped
+in a function. Checking it directly skips the API call and the import.
+
+Caveat: it's the first anti-debug check any analyst disables. Treat it as a speed bump,
+not a wall.
+
+## TEB fields worth knowing
+
+A few TEB offsets that come up in implant development:
+
+| Offset (x64) | Field | Use |
+|---|---|---|
+| `0x00` | `NtTib.Self` | Pointer to TEB itself |
+| `0x30` | `NtTib.StackBase` | Top of thread stack |
+| `0x38` | `NtTib.StackLimit` | Bottom of thread stack |
+| `0x60` | `ProcessEnvironmentBlock` | PEB pointer |
+| `0x1478` | `WowTebOffset` | WoW64 TEB (x86-on-x64) |
+
+The stack base and limit are useful for stack-walking detection evasion and for bounds
+checking in shellcode that needs to know how much stack it safely has.
+
+## The practical picture
+
+Put Parts 1–3 together and you have the full bootstrap chain any serious loader uses:
+
+```
+gs:[0x60]
+  → PEB.Ldr.InLoadOrderModuleList
+    → LDR_DATA_TABLE_ENTRY.DllBase      (ntdll or kernel32)
+      → IMAGE_EXPORT_DIRECTORY
+        → AddressOfNames / Ordinals / Functions
+          → target function address
+```
+
+No imports. No strings. No API calls to get there. Every link in the chain is a memory
+read off a known structure offset.
+
+The next part covers payload storage — the different techniques for embedding shellcode or
+a PE in a binary and how each trades off between detection surface and operational flexibility.

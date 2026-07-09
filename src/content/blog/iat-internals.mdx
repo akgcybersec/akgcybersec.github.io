@@ -1,0 +1,149 @@
+---
+title: "The Import Address Table: how Windows resolves APIs and why red teamers care"
+description: "How the IAT works, why EDRs love hooking it, and how to resolve Windows APIs at runtime without leaving a single import table entry."
+date: 2026-07-09
+tags: ["windows", "malware-dev", "internals", "evasion", "red-team"]
+---
+
+*Part 2 of the Windows internals series. [Part 1](/blog/pe-internals/) covered the PE header chain and export directory.*
+
+In the Better-RDPThief writeup I mentioned that the hooked APIs have no IAT entries — no
+`CryptProtectMemory` string sitting in the import table for a scanner to grep. This post
+explains exactly what that means, why it matters, and how to do it yourself.
+
+## What the IAT actually is
+
+When a PE needs an external function — `CreateFileW` from `kernel32.dll`, say — it can't
+hardcode the address at compile time. That address changes with ASLR, with OS version,
+with patch level. So the linker leaves a placeholder: a slot in the **Import Address Table**
+that the loader fills in at process startup, before your code runs.
+
+The IAT lives in the `.rdata` section (read-only after the loader is done with it). The
+Import Directory (Data Directory index `[1]`) points to an array of `IMAGE_IMPORT_DESCRIPTOR`
+structures, one per imported DLL:
+
+```c
+typedef struct _IMAGE_IMPORT_DESCRIPTOR {
+    union {
+        DWORD Characteristics;
+        DWORD OriginalFirstThunk; // RVA → Import Name Table (INT) — function names/ordinals
+    };
+    DWORD TimeDateStamp;
+    DWORD ForwarderChain;
+    DWORD Name;                   // RVA → DLL name string ("KERNEL32.dll\0")
+    DWORD FirstThunk;             // RVA → IAT — this is what gets patched at load time
+} IMAGE_IMPORT_DESCRIPTOR;
+```
+
+Each descriptor links two parallel arrays:
+
+- **Import Name Table (INT)** — `OriginalFirstThunk` — the *intended* imports, read-only, never modified
+- **Import Address Table (IAT)** — `FirstThunk` — starts as a copy of the INT, gets overwritten by the loader with actual function addresses
+
+At load time the loader walks each descriptor, finds the DLL, resolves each named function
+via that DLL's export directory, and writes the real address into the IAT. By the time
+`main()` runs, every call through the IAT already has the correct address in place.
+
+## The IAT as a map of your intentions
+
+Here's the offensive implication: **the IAT is a static, readable declaration of everything
+your binary plans to call.** Open any PE in PE-Bear, click the Imports tab, and you get the
+complete list — function name, DLL, address slot. No execution required.
+
+That list is exactly what AV signatures, EDR import-scanning, and YARA rules consume.
+A rule that matches on `CryptProtectMemory` + `GetProcAddress` in the same PE's import
+table is trivially written and practically free to check. If your loader imports
+`VirtualAllocEx`, `WriteProcessMemory`, and `CreateRemoteThread` in the same binary,
+you've written your detection rule for the analyst.
+
+## IAT hooking — how EDRs see your calls
+
+Before getting to evasion, understand what EDRs do *with* the IAT, because it explains
+what you're up against.
+
+IAT hooking is one of the oldest and simplest interception techniques. The EDR walks your
+binary's IAT after the loader has filled it in, finds the entry for (say) `NtCreateThread`,
+and overwrites that slot with the address of its own inspection stub. Your code calls what
+it thinks is `NtCreateThread`, but the call lands in the EDR's handler first.
+
+```
+Your code → IAT slot → [EDR hook] → original NtCreateThread
+```
+
+Detection for the IAT hook itself is equally simple — compare each IAT entry against the
+address the export directory of the target DLL says the function should be at. Any
+mismatch is a hook. Both attackers and defenders use this check.
+
+## Resolving APIs without touching the IAT
+
+The standard approach: don't use the IAT at all. Resolve everything yourself at runtime,
+the same way the loader does, and never declare the import.
+
+The recipe:
+
+1. Find the loaded DLL in memory (via PEB walk — covered in the next post)
+2. Parse that DLL's export directory
+3. Walk the three arrays (`AddressOfNames` → `AddressOfNameOrdinals` → `AddressOfFunctions`)
+4. Return the function address
+5. Store it in a function pointer, call through that
+
+In C this looks like:
+
+```c
+typedef LPVOID (WINAPI *fnVirtualAlloc)(LPVOID, SIZE_T, DWORD, DWORD);
+
+// pBase = base address of kernel32.dll found via PEB walk
+fnVirtualAlloc pVirtualAlloc = (fnVirtualAlloc)GetExportByName(pBase, "VirtualAlloc");
+LPVOID mem = pVirtualAlloc(NULL, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+```
+
+`GetExportByName` is your custom export resolver — the three-array walk from Part 1.
+The compiler sees a function-pointer call, not an import. Nothing goes in the IAT.
+The binary has no static declaration that it ever called `VirtualAlloc`.
+
+## Runtime API hashing — one step further
+
+The above still leaves the string `"VirtualAlloc"` in your binary's `.rdata`, which a
+`strings` run or YARA rule will catch. The next step is to never store the API name
+as plaintext — hash it at compile time, compare hashes at runtime.
+
+Common approach (djb2, ROR13, or a custom variant):
+
+```c
+#define HASH_VirtualAlloc 0xC0D9985E  // precomputed
+
+FARPROC GetExportByHash(PVOID pBase, DWORD targetHash) {
+    // walk export directory, hash each name string, compare to targetHash
+    // return matching function address
+}
+```
+
+No string in the binary. The hash constant is meaningless without context. This is the
+technique behind every "no strings" shellcode loader you'll find in the wild — and it's
+exactly what the string obfuscation in Better-RDPThief is a simpler variant of.
+
+## IAT patching — the other direction
+
+The IAT is also writable during certain windows of execution (and can be made writable
+again with `VirtualProtect`). That means you can patch it yourself — replace entries
+with your own stubs before the real code runs. This is how IAT hooking works from the
+offensive side: inject a DLL, walk the target process's IAT for the function you want
+to intercept, overwrite the slot.
+
+This is simpler than inline (trampoline) hooking — no instruction-level patching, no
+length disassembly, no prolog handling. The tradeoff: it's also the first thing a
+defensive IAT-integrity check catches. Use it when stealth isn't the requirement and
+reliability is.
+
+## The practical checklist
+
+When building a loader or implant that needs to avoid import-based detection:
+
+- **No sensitive API in `#include` + direct call.** Every such call becomes an IAT entry.
+- **Dynamic resolution via PEB walk + export parser.** No `LoadLibrary` needed if the DLL is already loaded.
+- **Hash the names.** Strings in `.rdata` are the next easiest detection surface after the IAT.
+- **Know which DLLs are guaranteed loaded.** `ntdll.dll` and `kernel32.dll` are always present. `kernelbase.dll` on Vista+. You don't need `LoadLibrary` for those.
+- **Check your own IAT if you ship a DLL.** If your hook DLL declares the APIs it hooks in its own import table, that's a detection signal. Better-RDPThief resolves all six hooked APIs dynamically for exactly this reason.
+
+Next: the PEB — how you find those DLL base addresses in the first place, without calling
+a single Windows API.
