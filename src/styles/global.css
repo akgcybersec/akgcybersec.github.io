@@ -180,3 +180,36 @@
   --tw-prose-th-borders: var(--color-border);
   --tw-prose-td-borders: var(--color-border);
 }
+
+/* Blog figures: default capped; only screenshots/diagrams tagged wide go full column */
+.prose-invert-custom :where(figure) {
+  margin: 1.25rem auto;
+  text-align: center;
+}
+
+.prose-invert-custom :where(figure) img {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+  width: auto;
+  max-width: min(100%, 30rem);
+  max-height: 22rem;
+  height: auto;
+  border-radius: 0.375rem;
+  border: 1px solid var(--color-border);
+}
+
+.prose-invert-custom :where(figure.blog-figure-wide) img {
+  max-width: 100%;
+  max-height: none;
+}
+
+.prose-invert-custom :where(figure.blog-figure-md) img {
+  max-width: min(100%, 26rem);
+  max-height: 20rem;
+}
+
+.prose-invert-custom :where(figure.blog-figure-sm) img {
+  max-width: min(100%, 16rem);
+  max-height: 14rem;
+}

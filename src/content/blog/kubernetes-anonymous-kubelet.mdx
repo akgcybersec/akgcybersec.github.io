@@ -1,0 +1,95 @@
+---
+title: "Anonymous kubelet API: reading pods and logs without credentials"
+description: "How exposed kubelet ports leak pod metadata, logs, and configuration, and what to do with the output during a Kubernetes assessment."
+date: 2025-12-22
+seriesSlug: "kubernetes-offensive"
+seriesTitle: "Attacking Kubernetes"
+seriesPart: 2
+seriesDescription: "Offensive Kubernetes: recon through RBAC abuse, pod escapes, persistence, and cloud pivot."
+tags: ["kubernetes", "kubelet", "red-team", "kubernetes-offensive"]
+---
+
+The API server on port 6443 gets the attention. The **kubelet** on worker nodes is where I have pulled pod lists, container logs, and kubelet config without a single credential.
+
+## Master vs worker targeting
+
+- **6443** on the master: Kubernetes API server.
+- **10250** on workers: kubelet HTTPS API (authenticated in modern configs, but often misconfigured).
+- **10255** on workers: legacy read-only kubelet HTTP API (should be disabled; frequently is not).
+
+Scan the worker, not just the master:
+
+```bash
+nmap 192.168.13.129 -sT -p- -T4
+nmap 192.168.13.129 -sC -p10250 -T4
+```
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20251222111908.png" alt="Nmap identifying kubelet on port 10250" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+## Enumerate running pods
+
+```bash
+curl -sk https://192.168.13.129:10250/runningpods/ | jq
+```
+
+Returns pod names, namespaces, UIDs, and container IDs for everything on that node.
+
+## Dump logs
+
+```bash
+curl -sk https://192.168.13.129:10250/logs/ | jq
+```
+
+Container stdout/stderr, sometimes host-level logs depending on configuration. I have recovered connection strings and API keys from application logs this way.
+
+## Read kubelet configuration
+
+```bash
+curl -sk https://192.168.13.129:10250/configz | jq
+```
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20251222112247.png" alt="kubelet configz output showing auth and network settings" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+Look for:
+
+- `authentication` / `authorization` mode (Webhook vs AlwaysAllow)
+- Pod manifest paths
+- Cluster DNS settings
+- Cgroup driver and runtime endpoint
+
+If authorization is `AlwaysAllow`, authenticated endpoints on 10250 become far more dangerous (exec into containers, etc.).
+
+## Legacy port 10255
+
+On older clusters, HTTP port 10255 exposes similar data with zero auth:
+
+```bash
+curl -sk http://<worker>:10255/pods/
+curl -sk http://<worker>:10255/runningpods/
+```
+
+Kubernetes 1.16+ disabled the read-only port by default. Production clusters still run ancient kubelet configs. Always check both ports.
+
+## What you learn from pod metadata
+
+From `/runningpods/` or `/pods/` output, extract:
+
+- Container images (hunt for `:latest` tags, private registry URLs)
+- Environment variables (DB passwords, API keys)
+- Volume mounts (hostPath = escape surface)
+- Service account names (RBAC pivot targets)
+
+Feed interesting service account names into the kubeconfig abuse post later in this series.
+
+## Defensive note
+
+- Disable `--read-only-port=10255` (default off in modern kubelet).
+- Set `--authorization-mode=Webhook` on kubelet.
+- Firewall 10250/10255 from anything except the control plane.
+- Rotate and audit NodePort and LoadBalancer services exposing admin UIs.
+
+Next: a full external attack chain from open kubelet to root on a MicroK8s host.

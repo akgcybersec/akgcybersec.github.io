@@ -1,0 +1,120 @@
+---
+title: "Kubernetes attack surface: ports and API enumeration"
+description: "What to look for when Nmap finds a Kubernetes cluster: API server, kubelet, scheduler ports, and unauthenticated discovery with curl."
+date: 2025-03-13
+seriesSlug: "kubernetes-offensive"
+seriesTitle: "Attacking Kubernetes"
+seriesPart: 1
+seriesDescription: "Offensive Kubernetes: recon through RBAC abuse, pod escapes, persistence, and cloud pivot."
+tags: ["kubernetes", "red-team", "pentest", "kubernetes-offensive"]
+---
+
+> Lab notes from authorised assessments and training environments. Do not point these techniques at systems you do not own or have written permission to test.
+
+When Nmap shows Kubernetes ports open to the internet, you are not looking at "maybe containers." You are looking at a management plane someone forgot to firewall.
+
+## Port map cheat sheet
+
+```
+Port(s)          Service              Risk if exposed
+─────────────────────────────────────────────────────────────
+6443             API Server           Cluster control (with creds or misconfig)
+10250            Kubelet (auth)       Pod exec, logs (auth-dependent)
+10255            Kubelet (read-only)  Anonymous pod enumeration (legacy)
+10259            kube-scheduler       Info leak, debug endpoints
+2379             etcd                 Full cluster state / secrets
+30000-32767      NodePort             Direct service access
+```
+
+Keep this table handy during external recon. One open port changes the entire engagement scope.
+
+## External enumeration workflow
+
+### 1. Port scan
+
+```bash
+nmap <target> -sT -p- -T4
+nmap <target> -sC -p6443,10250,10255,10259 -T4
+```
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20250313092345.png" alt="Nmap showing Kubernetes ports open" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20250313092350.png" alt="Nmap service detection on kubelet and scheduler ports" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+Typical finds: **10250** (Kubelet API), **10259** (kube-scheduler), **6443** (API server).
+
+### 2. Probe the API server
+
+Even without credentials, the API server often leaks information:
+
+```bash
+curl -ks https://<master-ip>:6443
+curl -ks https://<master-ip>:6443/metrics
+curl -ks https://<master-ip>:6443/.well-known/openid-configuration | jq
+```
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20251222104750.png" alt="SSL and DNS configuration from API server probe" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20251222105223.png" alt="API server root endpoint response" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+Look for cluster IP (often `10.96.0.1`), issuer URLs, and supported auth methods.
+
+`/metrics` is more useful for long-term monitoring than smash-and-grab red teams, but it reveals usage patterns and component health.
+
+OpenID configuration exposes the issuer DNS name and signing algorithms:
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20251222105608.png" alt="OpenID configuration from Kubernetes API" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+### 3. List pods (requires credentials or misconfiguration)
+
+With valid credentials or anonymous access misconfigured away in older clusters:
+
+```bash
+curl -ks https://<master-ip>:6443/api/v1/pods | jq
+```
+
+This dumps pod names, namespaces, container images, environment variables, mounted secrets, and internal IPs. Gold for targeting.
+
+## Anonymous kubelet read path (port 10255)
+
+On older or misconfigured worker nodes, the **read-only kubelet API** on port **10255** exposes pod metadata without authentication:
+
+```
+Attacker ──HTTP──► Worker :10255
+                      ├── /runningpods/
+                      ├── /pods/
+                      ├── /logs/
+                      └── /configz
+```
+
+```bash
+curl -sk http://<worker-ip>:10255/pods/
+```
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20250313092406.png" alt="anonymous pod information from kubelet port 10255" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+Full treatment in the next post.
+
+## What to do with findings
+
+| Finding | Next step |
+|---------|-----------|
+| 6443 + anonymous/misconfigured RBAC | API abuse (create pods, read secrets) |
+| 10255 open | Enumerate pods, hunt for creds in env vars |
+| 10250 open | Test authenticated kubelet API |
+| NodePort in 30000+ range | Hit the service directly |
+| Dashboard on NodePort | Token theft or default creds |
+
+Next: deep dive on anonymous and unauthenticated kubelet access on port 10250 and 10255.

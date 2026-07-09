@@ -1,0 +1,236 @@
+---
+title: "Lab: deploy MongoDB and Mongo Express on Kubernetes"
+description: "Hands-on lab wiring MongoDB, Mongo Express, Secrets, ConfigMaps, and an external LoadBalancer service on Minikube."
+date: 2024-11-13
+seriesSlug: "kubernetes-fundamentals"
+seriesTitle: "Kubernetes Fundamentals"
+seriesPart: 4
+seriesDescription: "Hands-on Kubernetes from cluster basics through deployments, ingress, namespaces, and storage."
+tags: ["kubernetes", "mongodb", "lab", "kubernetes-fundamentals"]
+---
+
+This lab deploys a two-tier stack: MongoDB (database) and Mongo Express (web UI). You will use Secrets for credentials, a ConfigMap for the database hostname, and a LoadBalancer service to reach the UI from your browser.
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/86a31f769a3d4af68e40743e61cf04b7.png" alt="MongoDB and Mongo Express architecture in Kubernetes" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+Prerequisites: Minikube running (`minikube start`).
+
+## Step 1: Secret for MongoDB credentials
+
+Check [Docker Hub: mongo](https://hub.docker.com/_/mongo) for `MONGO_INITDB_ROOT_USERNAME` and `MONGO_INITDB_ROOT_PASSWORD`.
+
+```yaml
+# mongodb-secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mongodb-secret
+type: Opaque
+data:
+  mongo-root-username: dXNlcm5hbWU=    # username (base64)
+  mongo-root-password: cGFzc3dvcmQ=    # password (base64)
+```
+
+Apply the secret **before** the deployment that references it:
+
+```bash
+kubectl apply -f mongodb-secret.yaml
+```
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
+  <img src="/resources/kubernetes/2551c9d86aed416b8e80adf33a42c8fe.png" alt="mongodb-secret created successfully" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+Generate your own values:
+
+```bash
+echo -n 'myuser' | base64
+echo -n 'mypassword' | base64
+```
+
+## Step 2: MongoDB deployment and internal service
+
+```yaml
+# mongodb.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb-deployment
+  labels:
+    app: mongodb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      containers:
+      - name: mongodb
+        image: mongo
+        ports:
+        - containerPort: 27017
+        env:
+        - name: MONGO_INITDB_ROOT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mongodb-secret
+              key: mongo-root-username
+        - name: MONGO_INITDB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mongodb-secret
+              key: mongo-root-password
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb-service
+spec:
+  selector:
+    app: mongodb
+  ports:
+    - protocol: TCP
+      port: 27017
+      targetPort: 27017
+```
+
+```bash
+kubectl apply -f mongodb.yaml
+kubectl get pods -l app=mongodb
+kubectl get svc mongodb-service
+```
+
+`mongodb-service` is cluster-internal. Other pods reach the database at hostname `mongodb-service` on port 27017.
+
+## Step 3: ConfigMap for Mongo Express
+
+[Mongo Express](https://hub.docker.com/_/mongo-express) needs admin credentials and the MongoDB server hostname. The server name is the **service name**, not a pod IP.
+
+```yaml
+# mongo-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mongodb-configmap
+data:
+  database_url: mongodb-service
+```
+
+```bash
+kubectl apply -f mongo-configmap.yaml
+```
+
+## Step 4: Mongo Express deployment
+
+```yaml
+# mongo-express.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongo-express
+  labels:
+    app: mongo-express
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongo-express
+  template:
+    metadata:
+      labels:
+        app: mongo-express
+    spec:
+      containers:
+      - name: mongo-express
+        image: mongo-express
+        ports:
+        - containerPort: 8081
+        env:
+        - name: ME_CONFIG_MONGODB_ADMINUSERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mongodb-secret
+              key: mongo-root-username
+        - name: ME_CONFIG_MONGODB_ADMINPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mongodb-secret
+              key: mongo-root-password
+        - name: ME_CONFIG_MONGODB_SERVER
+          valueFrom:
+            configMapKeyRef:
+              name: mongodb-configmap
+              key: database_url
+```
+
+## Step 5: External service (LoadBalancer + NodePort)
+
+```yaml
+# mongo-express-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo-express-service
+spec:
+  selector:
+    app: mongo-express
+  type: LoadBalancer
+  ports:
+    - protocol: TCP
+      port: 8081
+      targetPort: 8081
+      nodePort: 30000
+```
+
+NodePort range: **30000-32767**.
+
+```bash
+kubectl apply -f mongo-express.yaml
+kubectl apply -f mongo-express-service.yaml
+kubectl get svc mongo-express-service
+```
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/1d7c0f733e1f41ffa859d38c37119dbb.png" alt="mongo-express-service with external IP pending on Minikube" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+On Minikube, `EXTERNAL-IP` stays `<pending>` until you tunnel:
+
+```bash
+minikube service mongo-express-service
+```
+
+That opens the UI in your browser. Log in with the credentials from your Secret.
+
+## Verify and tear down
+
+```bash
+kubectl get all
+kubectl logs -l app=mongo-express
+kubectl describe pod -l app=mongodb
+```
+
+Clean up:
+
+```bash
+kubectl delete -f mongo-express-service.yaml
+kubectl delete -f mongo-express.yaml
+kubectl delete -f mongodb.yaml
+kubectl delete -f mongo-configmap.yaml
+kubectl delete -f mongodb-secret.yaml
+```
+
+## What this lab taught you
+
+- Secrets for sensitive env vars; ConfigMaps for non-sensitive config.
+- Internal service DNS (`mongodb-service`) so apps survive pod restarts.
+- LoadBalancer + NodePort for external access on local clusters.
+- Label/selectors wiring deployments to services (from the previous post).
+
+Next: replacing `http://ip:30000` with proper hostname routing via Ingress.

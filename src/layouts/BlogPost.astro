@@ -2,15 +2,26 @@
 import BaseLayout from './BaseLayout.astro';
 import { Icon } from 'astro-icon/components';
 
+interface SeriesLink {
+  title: string;
+  href: string;
+  part: number;
+}
+
 interface Props {
   title: string;
   description: string;
   date: Date;
   updated?: Date;
   tags: string[];
+  seriesTitle?: string;
+  seriesPart?: number;
+  prevInSeries?: SeriesLink;
+  nextInSeries?: SeriesLink;
 }
 
-const { title, description, date, updated, tags } = Astro.props;
+const { title, description, date, updated, tags, seriesTitle, seriesPart, prevInSeries, nextInSeries } =
+  Astro.props;
 const formatter = new Intl.DateTimeFormat('en-US', {
   year: 'numeric',
   month: 'long',
@@ -53,6 +64,52 @@ const formatter = new Intl.DateTimeFormat('en-US', {
       <div class="prose prose-invert prose-invert-custom mt-10 max-w-none">
         <slot />
       </div>
+
+      {(prevInSeries || nextInSeries) && (
+        <nav
+          class="mt-16 pt-8"
+          style="border-top: 1px solid var(--color-border);"
+          aria-label="Series navigation"
+        >
+          {seriesTitle && seriesPart && (
+            <p class="font-mono text-xs uppercase tracking-wider text-[color:var(--color-text-muted)] mb-6">
+              {seriesTitle} · Part {seriesPart}
+            </p>
+          )}
+          <div class="grid gap-4 sm:grid-cols-2">
+            {prevInSeries ? (
+              <a
+                href={prevInSeries.href}
+                class="group flex flex-col gap-1 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg-card)] p-4 transition hover:border-[color:var(--color-accent-dim)] hover:bg-[color:var(--color-bg-elev)]"
+              >
+                <span class="inline-flex items-center gap-1.5 font-mono text-xs text-[color:var(--color-text-muted)] group-hover:text-[color:var(--color-accent)]">
+                  <Icon name="lucide:arrow-left" class="w-3.5 h-3.5" />
+                  Previous
+                </span>
+                <span class="text-sm font-medium text-[color:var(--color-text)] group-hover:text-[color:var(--color-accent)]">
+                  Part {prevInSeries.part}: {prevInSeries.title}
+                </span>
+              </a>
+            ) : (
+              <div />
+            )}
+            {nextInSeries && (
+              <a
+                href={nextInSeries.href}
+                class="group flex flex-col gap-1 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg-card)] p-4 transition hover:border-[color:var(--color-accent-dim)] hover:bg-[color:var(--color-bg-elev)] sm:text-right sm:items-end"
+              >
+                <span class="inline-flex items-center gap-1.5 font-mono text-xs text-[color:var(--color-text-muted)] group-hover:text-[color:var(--color-accent)]">
+                  Next
+                  <Icon name="lucide:arrow-right" class="w-3.5 h-3.5" />
+                </span>
+                <span class="text-sm font-medium text-[color:var(--color-text)] group-hover:text-[color:var(--color-accent)]">
+                  Part {nextInSeries.part}: {nextInSeries.title}
+                </span>
+              </a>
+            )}
+          </div>
+        </nav>
+      )}
     </div>
   </article>
 </BaseLayout>

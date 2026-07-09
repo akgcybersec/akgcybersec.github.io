@@ -107,7 +107,7 @@ Tradeoff:
 
 APC injection queues your payload as a callback on a target thread's APC queue. The thread must enter an alertable wait state before the callback fires.
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
   <img src="/resources/codeinjection/e0ab72ff5d014f61a63a5687a338651b.png" alt="APC injection flow: QueueUserAPC, alertable wait, callback execution" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 
@@ -130,7 +130,7 @@ Operationally:
 
 Early Bird creates a new process suspended, injects before main thread runs, queues APC on the primary thread, then resumes. The payload runs before most userland hooks settle.
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
   <img src="/resources/codeinjection/63b90aa837a84e268461b717b52ad6dc.png" alt="Early Bird APC injection sequence diagram" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 

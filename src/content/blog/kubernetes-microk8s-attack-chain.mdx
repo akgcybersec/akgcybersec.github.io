@@ -1,0 +1,169 @@
+---
+title: "Attack chain: from exposed kubelet to root on MicroK8s"
+description: "Walkthrough of an external Kubernetes engagement: anonymous pod enumeration, credential discovery, SSH access, and MicroK8s privilege escalation."
+date: 2025-03-13
+seriesSlug: "kubernetes-offensive"
+seriesTitle: "Attacking Kubernetes"
+seriesPart: 3
+seriesDescription: "Offensive Kubernetes: recon through RBAC abuse, pod escapes, persistence, and cloud pivot."
+tags: ["kubernetes", "microk8s", "red-team", "kubernetes-offensive"]
+---
+
+> Authorised lab environment. Techniques described for defensive awareness and permitted testing only.
+
+This is a full chain I documented from an external assessment where Kubernetes ports were internet-facing. It goes from Nmap to root on the host running MicroK8s.
+
+## 1. Port scan finds Kubernetes
+
+```bash
+nmap <target> -sT -p- -T4
+```
+
+Open ports included kubelet (**10250**), kube-scheduler (**10259**), and related services.
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20250313092345.png" alt="initial Nmap scan showing open ports" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20250313092350.png" alt="service version detection on Kubernetes ports" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+## 2. Anonymous pod enumeration on 10255
+
+First check: can we read pod info without credentials?
+
+```bash
+curl -sk http://<target>:10255/pods/
+```
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20250313092406.png" alt="pod information returned without authentication" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+Direct pod metadata from outside the network. Namespaces, container specs, environment hints.
+
+## 3. Directory scan finds `.git-credentials`
+
+Further enumeration on exposed HTTP services turned up a sensitive file:
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20250313092435.png" alt="directory scan finding git-credentials file" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+File type check confirmed ASCII text:
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20250313092631.png" alt="file command showing ASCII git-credentials" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+Contents were URL-encoded credentials:
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20250313092654.png" alt="decoded username and password from git-credentials" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+```bash
+# decode URL-encoded creds from the file
+python3 -c "import urllib.parse; print(urllib.parse.unquote('...'))"
+```
+
+## 4. SSH with recovered credentials
+
+SSH was open externally. Log in with the recovered user:
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20250313092707.png" alt="successful SSH login" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+Shell banner mentioned **microk8s**:
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20250313092943.png" alt="SSH motd showing microk8s" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+MicroK8s is a single-command Kubernetes distribution common on Ubuntu. Low overhead, often installed on dev/staging servers with weak hardening.
+
+## 5. Host enumeration
+
+```bash
+ps aux | grep -i kube
+microk8s status
+```
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20250313093008.png" alt="running processes showing microk8s and container IDs" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20250313093020.png" alt="microk8s status output" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+List pods with the local kubeconfig:
+
+```bash
+microk8s kubectl get pods -A
+# or
+microk8s kubectl get all -A
+```
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20250313093114.png" alt="listing all pods via microk8s kubectl" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+## 6. Privilege escalation: CVE-2019-15789
+
+Search for MicroK8s privesc leads to [CVE-2019-15789](https://pulsesecurity.co.nz/advisories/microk8s-privilege-escalation). Certain pod configurations grant root on the host.
+
+Required pod features (from the advisory):
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20250313093131.png" alt="CVE-2019-15789 required pod configuration" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+Grab an image from a running pod to blend in:
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20250313093210.png" alt="image name from running pod" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+Create the privesc pod YAML (per the advisory), apply it:
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20250313093222.png" alt="creating privesc pod YAML" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20250313093312.png" alt="applying malicious pod" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+Verify it is running:
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20250313093418.png" alt="new pod running in pod list" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+Exec in and confirm host root access:
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20250313093428.png" alt="bash inside privesc pod" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20250313093435.png" alt="accessing root files on host" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+```bash
+microk8s kubectl exec -it <privesc-pod> -- bash
+# inside pod: access host filesystem
+ls /root
+```
+
+## Lessons
+
+1. **10255 should not face the internet.** Anonymous pod enumeration starts the chain.
+2. **Credentials on web-accessible paths** (`/.git-credentials`) still happen.
+3. **MicroK8s on SSH-accessible hosts** with permissive pod security = host compromise.
+4. Patch MicroK8s and enforce Pod Security Standards.
+
+Next: abusing the Kubernetes API directly with curl when you have API access.

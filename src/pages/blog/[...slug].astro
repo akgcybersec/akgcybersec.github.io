@@ -2,15 +2,67 @@
 import { getCollection, render } from 'astro:content';
 import BlogPost from '../../layouts/BlogPost.astro';
 
+type SeriesLink = {
+  title: string;
+  href: string;
+  part: number;
+};
+
 export async function getStaticPaths() {
   const posts = await getCollection('blog', ({ data }) => !data.draft);
-  return posts.map((post) => ({
-    params: { slug: post.id },
-    props: { post },
-  }));
+
+  const seriesMap = new Map<string, typeof posts>();
+  for (const post of posts) {
+    if (!post.data.seriesSlug) continue;
+    const group = seriesMap.get(post.data.seriesSlug) ?? [];
+    group.push(post);
+    seriesMap.set(post.data.seriesSlug, group);
+  }
+  for (const [slug, group] of seriesMap) {
+    seriesMap.set(
+      slug,
+      [...group].sort((a, b) => {
+        const ap = a.data.seriesPart ?? Number.MAX_SAFE_INTEGER;
+        const bp = b.data.seriesPart ?? Number.MAX_SAFE_INTEGER;
+        if (ap !== bp) return ap - bp;
+        return a.data.date.getTime() - b.data.date.getTime();
+      }),
+    );
+  }
+
+  return posts.map((post) => {
+    let prevInSeries: SeriesLink | undefined;
+    let nextInSeries: SeriesLink | undefined;
+
+    if (post.data.seriesSlug && post.data.seriesPart) {
+      const siblings = seriesMap.get(post.data.seriesSlug) ?? [];
+      const idx = siblings.findIndex((p) => p.id === post.id);
+      if (idx > 0) {
+        const prev = siblings[idx - 1];
+        prevInSeries = {
+          title: prev.data.title,
+          href: `/blog/${prev.id}/`,
+          part: prev.data.seriesPart!,
+        };
+      }
+      if (idx >= 0 && idx < siblings.length - 1) {
+        const next = siblings[idx + 1];
+        nextInSeries = {
+          title: next.data.title,
+          href: `/blog/${next.id}/`,
+          part: next.data.seriesPart!,
+        };
+      }
+    }
+
+    return {
+      params: { slug: post.id },
+      props: { post, prevInSeries, nextInSeries },
+    };
+  });
 }
 
-const { post } = Astro.props;
+const { post, prevInSeries, nextInSeries } = Astro.props;
 const { Content } = await render(post);
 ---
 <BlogPost
@@ -19,6 +71,10 @@ const { Content } = await render(post);
   date={post.data.date}
   updated={post.data.updated}
   tags={post.data.tags}
+  seriesTitle={post.data.seriesTitle}
+  seriesPart={post.data.seriesPart}
+  prevInSeries={prevInSeries}
+  nextInSeries={nextInSeries}
 >
   <Content />
 </BlogPost>

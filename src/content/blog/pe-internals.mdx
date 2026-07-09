@@ -32,7 +32,7 @@ a loader or try to parse a PE programmatically. RVA ≠ file offset. Always chec
 
 Every PE splits into a header (technical metadata and pointers) and sections (actual code and data). The diagram below shows how file pointer and RVA relate across those two regions:
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/peformats/e10ec5db6acc403684f7854e9ae3a1ce.png" alt="PE file layout: headers vs sections, file pointer vs RVA" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 
@@ -135,7 +135,7 @@ in memory and what permissions to apply with `VirtualProtect`. The section with
 
 In PE-Bear on `notepad.exe`, the section table maps each section name to its virtual address, raw size, and permission flags:
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/peformats/0ea65c32846340b790311c19a8a26d45.png" alt="PE-Bear section table with VirtualAddress and Characteristics" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 
@@ -185,7 +185,7 @@ entries. Understanding the structure is what makes that code second nature inste
 
 PE-Bear's export view shows the three parallel arrays in action: function names, ordinals, and resolved RVAs side by side:
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/peformats/4c1837dfdc37480d99fa4a6cf40f0785.png" alt="PE-Bear export directory: names, ordinals, and function RVAs" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 
@@ -207,7 +207,7 @@ some APIs will silently resolve to garbage addresses.
 
 A forwarded export shows up as a string like `NTDLL.RtlAcquireSRWLockExclusive` in the EAT instead of a function RVA. PE-Bear marks these clearly in the export list:
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/peformats/764d1ea1afb84bada129b6a7431c583c.png" alt="PE-Bear forwarded export entry pointing to NTDLL" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 

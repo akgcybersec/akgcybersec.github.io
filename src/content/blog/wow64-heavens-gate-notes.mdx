@@ -17,7 +17,7 @@ They are not random. They are architecture boundary mistakes.
 
 WoW64 is the compatibility layer that lets 32-bit user-mode processes run on 64-bit Windows.
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
   <img src="/resources/wow64/b3e0be63fba44b2f807d6724a5847e49.png" alt="WoW64 subsystem overview diagram" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 
@@ -31,10 +31,10 @@ A WoW64 process can host both 32-bit and 64-bit NTDLL-related behavior paths. Th
 
 On a 32-bit `notepad.exe`, Process Hacker shows `wow64.dll`, `wow64cpu.dll`, `wow64win.dll`, plus both 32-bit and 64-bit `ntdll.dll` loaded side by side:
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/wow64/374abee2b0ea4dbfba50930511b4394e.png" alt="Process Hacker module list for 32-bit notepad under WoW64" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/wow64/81223fe671f54ac7826d4f835101b604.png" alt="32-bit and 64-bit ntdll.dll in WoW64 process" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 
@@ -44,13 +44,13 @@ A 32-bit process under WoW64 can transition to 64-bit execution context using fa
 
 In x32dbg on 32-bit `notepad.exe`, open `ntdll.dll` and navigate to `NtCreateThread`. The disassembly shows `Wow64SystemServiceCall` stubs. Following one of these jumps lands on `Wow64Transition`, where the far jump `jmp far 33:...` switches from the 32-bit code segment (`0x23`) to the 64-bit segment (`0x33`).
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
   <img src="/resources/wow64/96f84d7aff364187b33af32454f28e86.png" alt="x32dbg NtCreateThread with Wow64SystemServiceCall stubs" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/wow64/be9d504726f04cd4ae02c12fd4d64094.png" alt="x32dbg following Wow64SystemServiceCall into ntdll" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/wow64/c913a9d28aad4a349353f6930c7e6b76.png" alt="x32dbg Wow64Transition far jmp to 64-bit segment" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 

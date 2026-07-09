@@ -41,16 +41,16 @@ API is resolved.
 
 In WinDbg on a live process, `!peb` dumps the parsed PEB: loaded DLLs, heap info, current directory, and environment variables. `dt _PEB` shows the structure layout, and `r $peb` gives the current PEB address you can map against live memory.
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/tebpeb/6ac9a9b938de43e2881b13dd3007a532.png" alt="WinDbg !peb output for notepad.exe" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/tebpeb/ec692a6358744ff6b333283605d36909.png" alt="WinDbg dt _PEB structure definition" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/tebpeb/bd6c9563e0754e1cb2743662edb84e29.png" alt="WinDbg r $peb showing current PEB address" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/tebpeb/d526394eb8ca49aa99625ef5ecdb7607.png" alt="WinDbg dt _PEB mapped to live PEB values" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 
@@ -76,7 +76,7 @@ a DLL or need per-thread context.
 
 `dt _TEB` in WinDbg shows the layout. On x64, `ProcessEnvironmentBlock` sits at offset `0x60` in the TEB and points back to the PEB.
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/tebpeb/42193d193d9347968cd77adc7032a13b.png" alt="WinDbg dt _TEB showing ProcessEnvironmentBlock offset" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 
@@ -129,16 +129,16 @@ wide string. That's everything you need to implement `GetModuleHandle` without c
 
 From the PEB, expand the `Ldr` field to reach the three module lists. `InMemoryOrderModuleList` is the one most shellcode walks. Each `Flink` points to an `LDR_DATA_TABLE_ENTRY` with the module base and name.
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/tebpeb/8dd5cb0d39484aec94dda3fcfdaee734.png" alt="WinDbg PEB Ldr field with module list entries" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/tebpeb/dc5ad6cb87a244028d959a9d8d88fffe.png" alt="WinDbg LDR_DATA_TABLE_ENTRY structure layout" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/tebpeb/8aa6b4e7436d431cb7ceb900f0f362d8.png" alt="WinDbg LDR entry showing DllBase and BaseDllName" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/tebpeb/d0f7878d6f394ebb8d5c81e30f9a9dc6.png" alt="WinDbg next module via Flink chain walk" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 

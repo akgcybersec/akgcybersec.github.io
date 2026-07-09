@@ -1,0 +1,106 @@
+---
+title: "Kubernetes namespaces: organising and isolating workloads"
+description: "Default namespaces, when to create your own, and how ConfigMaps, Secrets, and Services behave across namespace boundaries."
+date: 2024-11-13
+seriesSlug: "kubernetes-fundamentals"
+seriesTitle: "Kubernetes Fundamentals"
+seriesPart: 6
+seriesDescription: "Hands-on Kubernetes from cluster basics through deployments, ingress, namespaces, and storage."
+tags: ["kubernetes", "namespaces", "rbac", "kubernetes-fundamentals"]
+---
+
+A **namespace** is a virtual cluster inside a physical cluster. Resources with the same name can coexist in different namespaces. RBAC, resource quotas, and network policies often scope to namespaces.
+
+## Default namespaces
+
+Fresh clusters ship with four built-in namespaces (Minikube also has `kubernetes-dashboard`):
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/57a063fb37ff474aa7a46e1a20c855b6.png" alt="default Kubernetes namespaces" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+| Namespace | Purpose |
+|-----------|---------|
+| `kube-system` | Control plane components. Do not deploy your apps here. |
+| `kube-public` | Public cluster info. ConfigMap readable without auth. |
+| `kube-node-lease` | Per-node heartbeat objects for availability tracking. |
+| `default` | Where your resources land if you omit `-n`. |
+
+Dump public cluster info:
+
+```bash
+kubectl cluster-info dump
+```
+
+## Why create namespaces
+
+```bash
+kubectl create namespace my-namespace
+kubectl get namespaces
+```
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/960f51205a8f4bde875a883bc0131cd8.png" alt="creating a custom namespace" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+**1. Organisation at scale**
+
+Everything in `default` gets messy fast:
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/ce30f07073af490c854d4066368a49b4.png" alt="cluttered default namespace with many unrelated resources" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+Split by function: `database`, `monitoring`, `elastic-stack`, `nginx`:
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/5ec260e72de84b9fa30975e824e42cea.png" alt="resources organised into logical namespaces" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+**2. Multi-team isolation**
+
+Two teams both deploying `api-deployment` in `default` will step on each other. Separate namespaces prevent accidental overwrites.
+
+**3. Access control and quotas**
+
+Bind Roles to namespaces so team A cannot touch team B's resources. Set CPU/memory quotas per namespace.
+
+**4. Environment separation**
+
+`dev`, `staging`, `prod` as namespaces on one cluster (with strict RBAC) is common in smaller setups.
+
+## What is namespaced vs global
+
+- **ConfigMaps and Secrets**: namespace-scoped. Each namespace gets its own copies.
+- **Services**: namespace-scoped, but can be referenced cross-namespace with FQDN (`my-svc.other-ns.svc.cluster.local`).
+- **PersistentVolumes and Nodes**: **cluster-scoped** (not namespaced).
+
+List cluster-scoped types:
+
+```bash
+kubectl api-resources --namespaced=false
+```
+
+## Deploy into a namespace
+
+```bash
+kubectl apply -f mongo-configmap.yaml -n my-namespace
+kubectl get configmaps -n my-namespace
+kubectl get all -n my-namespace
+```
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
+  <img src="/resources/kubernetes/4abe3c15c0b5437daae4b5c618cdf123.png" alt="configmap created in custom namespace" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+Set a default namespace for your current context:
+
+```bash
+kubectl config set-context --current --namespace=my-namespace
+```
+
+## Offensive angle (preview)
+
+Namespaces matter in pentests too. A compromised service account in `dev` might have `pods/exec` on pods in `data-exfiltration` if RBAC bindings are loose. The offensive series covers that path in detail.
+
+Next: persistent storage with PV, PVC, and StorageClass.

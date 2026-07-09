@@ -50,7 +50,7 @@ via that DLL's export directory, and writes the real address into the IAT. By th
 
 PE-Bear maps this visually: each `IMAGE_IMPORT_DESCRIPTOR` links the DLL name, `OriginalFirstThunk` (INT), and `FirstThunk` (IAT) for every imported function:
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/importtable/c15a5466c7b24624a2589dbc119a0fab.png" alt="PE-Bear import descriptor with INT and IAT thunks" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 
@@ -86,10 +86,10 @@ mismatch is a hook. Both attackers and defenders use this check.
 
 The first diagram shows an EDR overwriting an IAT slot so calls route through its stub. The second shows comparing the IAT entry against the export directory address to detect the mismatch:
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/importtable/4878a87833ae47858903013da5717034.png" alt="IAT slot overwritten to redirect through EDR hook stub" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
   <img src="/resources/importtable/dc341b052f404903bcc193c5988fa507.png" alt="Comparing IAT entry against export directory to detect hook" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 
@@ -122,7 +122,7 @@ The binary has no static declaration that it ever called `VirtualAlloc`.
 
 In a debugger, the call goes through a function pointer resolved at runtime. No import table entry exists for `VirtualAlloc` in the binary's static view:
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/importtable/e87af589e4a94adc85bb160ff621dbc1.png" alt="Runtime-resolved VirtualAlloc call via function pointer" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 
@@ -149,7 +149,7 @@ exactly what the string obfuscation in Better-RDPThief is a simpler variant of.
 
 At runtime the loader hashes each export name and compares against a precomputed constant. No plaintext API string appears anywhere in the binary:
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/importtable/c074217dfc5e46d2bbca0731aa2147fd.png" alt="Export walk comparing ROR hashes instead of plaintext names" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 

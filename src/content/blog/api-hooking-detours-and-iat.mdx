@@ -36,13 +36,13 @@ trampoline -> original_bytes + JMP target_api_entry+patched_len
 
 The diagram below from the original Detours research paper shows the control flow with and without interception. Left: normal direct call. Right: with a detour, the source hits the hook handler first, then optionally continues through the trampoline to the original target.
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-sm">
   <img src="/resources/apihooking/42faa4a46fe445808127104c0fbb1875.png" alt="Detours control flow: direct call vs. intercepted call through hook handler and trampoline" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 
 In practice the trampoline holds the displaced original bytes followed by a jump back into the target function past the patched prologue. This is what lets you call the original behaviour cleanly from inside the hook:
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-sm">
   <img src="/resources/apihooking/56b12d4d77e046f4a7a2880e5f9a38e3.png" alt="Trampoline detail: target function with JMP overwrite, trampoline with original bytes and return jump" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 

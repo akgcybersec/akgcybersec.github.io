@@ -45,7 +45,7 @@ __declspec(noinline) ULONG_PTR caller(void) { return (ULONG_PTR)_ReturnAddress()
 
 From that address, the loader walks backward until DOS and NT signatures match expected layout. In the reflective loader source, the current address is cast to `PIMAGE_DOS_HEADER` and `e_magic` is checked for `MZ` before following `e_lfanew` to the NT headers.
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/reflectiveloader/8bdbb97b7572491aa321453e5905e0dc.png" alt="Reflective loader walking backward to find MZ and PE signatures" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 
@@ -62,19 +62,19 @@ Many loaders use ROR hash matching for module and function names to avoid plaint
 
 First, the loader reads the PEB and reaches the loaded module list. It hashes each module name until `kernel32.dll` matches, then walks that module's export directory to resolve `LoadLibraryA`, `GetProcAddress`, and `VirtualAlloc`. A second pass does the same for `ntdll.dll` to find `NtFlushInstructionCache`.
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/reflectiveloader/6fa8174de209451b8a9242ecdc938e07.png" alt="PEB offset selection for x86 vs x64" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/reflectiveloader/6985afe7adf642c089b47982d47f138c.png" alt="First entry in PEB module list" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/reflectiveloader/7bae805428844b6baf174af44374ad78.png" alt="ROR hash comparison against KERNEL32DLL_HASH" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
   <img src="/resources/reflectiveloader/48de28fb50434f7e8a36b477c6f2d986.png" alt="Export directory walk for kernel32 functions" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/reflectiveloader/36702a4170fb4a67b50064134e4d6700.png" alt="ntdll.dll base and NtFlushInstructionCache resolution" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 
@@ -90,13 +90,13 @@ At this point the image exists at a new base, but it is not runnable yet.
 
 `VirtualAlloc` reserves RWX memory at the new base, then headers are copied into place:
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
   <img src="/resources/reflectiveloader/d8f5da69cc874c6980cffe1773a350dc.png" alt="VirtualAlloc and header copy in reflective loader" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 
 Each section is then copied from file offset to its `VirtualAddress` in the mapped image:
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
   <img src="/resources/reflectiveloader/05f22fe756934fe4b870edb8f43f3c9b.png" alt="Section copy loop in reflective loader" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 
@@ -113,10 +113,10 @@ No import fixups, no execution.
 
 The import directory is located from the data directories, then each descriptor is walked. `LoadLibraryA` pulls in dependent DLLs; `GetProcAddress` (or ordinal lookup) fills each thunk slot.
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
   <img src="/resources/reflectiveloader/1fccfae17d8a41e5ae3044d551e8cd58.png" alt="Import descriptor walk and LoadLibraryA call" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
   <img src="/resources/reflectiveloader/8b7851139bc84828b113297dfa62ac61.png" alt="Ordinal and name resolution into FirstThunk" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 
@@ -134,28 +134,28 @@ This step is where many custom loaders break under ASLR-heavy conditions. Works 
 
 In PE-Bear, the Optional Header `DllCharacteristics` flag "DLL can move" tells you ASLR is enabled and relocations will be needed. The `BaseReloc` tab shows relocation blocks: each `VirtualAddress`, `SizeOfBlock`, and type/offset entries that the loader must patch with the delta.
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
   <img src="/resources/reflectiveloader/ab7288a148d64018b909dbfd7efd8e28.png" alt="PE-Bear DLL can move flag in Optional Header" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
   <img src="/resources/reflectiveloader/8fa125dfb17c45dabe6e17cbd26c2e96.png" alt="PE-Bear BaseReloc table entries" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/reflectiveloader/64374ea20abe4ae7a83e2b3f8d194161.png" alt="Relocation block structure with type and offset" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 
 A practical delta calculation on a loaded binary: actual base minus preferred `ImageBase`, then add the relocation RVA from the first block.
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/reflectiveloader/056919fd6e92494dbc6d72fd8c1638c2.png" alt="Loaded notepad.exe base address in memory" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/reflectiveloader/0022396f1a0b40baa8532c8c56ddbb9e.png" alt="Relocation RVA from first BaseReloc block" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 
 The loader code calculates delta and iterates each relocation block, patching `IMAGE_REL_BASED_DIR64` entries on x64:
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
   <img src="/resources/reflectiveloader/28fd5570895c41dfb9d0f5bc57b115a6.png" alt="Relocation delta calculation and block iteration in loader" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 
@@ -167,7 +167,7 @@ If this transition succeeds and host process stays stable, reflective load is co
 
 The entry point RVA is read from the optional header, `NtFlushInstructionCache` clears stale code from the CPU cache, then control transfers to `DllMain` or the chosen export.
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
   <img src="/resources/reflectiveloader/1c4adad01b3c492380cf149a1dcd1d41.png" alt="Entry point transfer and NtFlushInstructionCache call" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 
@@ -187,10 +187,10 @@ Typical sequence:
 
 The sRDI Python script converts a DLL into position-independent shellcode. Options include clearing headers and obfuscating imports on top of the reflective load.
 
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-md">
   <img src="/resources/reflectiveloader/d8bfef4a9e4d41a8a4d70e1af7f1f50d.png" alt="sRDI conversion script options" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
-<figure style="text-align:center; margin: 1.25rem 0;">
+<figure style="text-align:center; margin: 1.25rem 0;" class="blog-figure-wide">
   <img src="/resources/reflectiveloader/3542bfbd18114acb92d54e1aafab9da5.png" alt="sRDI output shellcode ready for injection" style="display:block; margin:0 auto; max-width:100%; height:auto;" />
 </figure>
 
