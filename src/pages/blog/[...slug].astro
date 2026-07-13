@@ -1,6 +1,7 @@
 ---
 import { getCollection, render } from 'astro:content';
 import BlogPost from '../../layouts/BlogPost.astro';
+import { blogReferences } from '../../data/blog-references';
 
 type SeriesLink = {
   title: string;
@@ -64,6 +65,7 @@ export async function getStaticPaths() {
 
 const { post, prevInSeries, nextInSeries } = Astro.props;
 const { Content } = await render(post);
+const refEntry = blogReferences[post.id] ?? { references: [], related: [] };
 ---
 <BlogPost
   title={post.data.title}
@@ -75,6 +77,8 @@ const { Content } = await render(post);
   seriesPart={post.data.seriesPart}
   prevInSeries={prevInSeries}
   nextInSeries={nextInSeries}
+  references={refEntry.references}
+  related={refEntry.related}
 >
   <Content />
 </BlogPost>
