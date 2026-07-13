@@ -1,0 +1,116 @@
+---
+title: "Docker escape paths: group, socket, TCP API, and privileged mode"
+description: "How docker group membership, mounted sockets, exposed TCP 2375, privileged containers, and host networking turn container access into host root."
+date: 2022-02-20
+seriesSlug: "docker-offensive"
+seriesTitle: "Attacking Docker"
+seriesPart: 2
+seriesDescription: "Offensive Docker: container triage through escape paths, capabilities, registries, and runtime abuse."
+tags: ["docker", "container-escape", "linux", "red-team", "docker-offensive"]
+---
+
+> Lab notes from authorised assessments and training environments. Do not point these techniques at systems you do not own or have written permission to test.
+
+Most Docker escapes I see in the field are not clever. They are misconfigurations where the runtime already gave the attacker a direct line to the host filesystem or the daemon. This post covers the five paths I check immediately after [triage](/blog/docker-pentest-playbook/): docker group membership, bind-mounted sockets, exposed TCP API, privileged containers, and shared host networking.
+
+## Docker group membership is root access
+
+If the user I compromised belongs to the `docker` group, the engagement is effectively over. Membership in that group is equivalent to root on the host because the Docker daemon will spawn a new container with arbitrary volume mounts on behalf of anyone in the group.
+
+```bash
+groups
+cat /etc/group | grep docker
+docker images
+```
+
+The manual escape path is still the one I run first in labs because it teaches the mechanic and works on every image that can mount volumes:
+
+```bash
+docker run -it -v /:/host ubuntu:22.04 bash
+chroot /host bash
+```
+
+For automation, [dockerrootplease](https://github.com/chrisfosterelli/dockerrootplease) and [docker-privesc](https://github.com/flast101/docker-privesc) wrap the same idea. I use the manual mount when I am learning a new environment and reach for the tools when I need speed on a repeat assessment.
+
+## Mounted Docker socket
+
+Portainer, Sysdig agents, and CI build runners often run inside a container that has `/var/run/docker.sock` bind-mounted so they can control sibling containers on the same host. Compromise the application container and you inherit access to the daemon, which is the same outcome as docker group membership with a different front door.
+
+The Docker CLI might not be installed in a minimal image, but that does not matter because the [Docker Engine API](https://docs.docker.com/engine/api/) behind the socket is the same interface the CLI uses:
+
+```bash
+curl --unix-socket /var/run/docker.sock http://localhost/containers/json
+curl --unix-socket /var/run/docker.sock http://localhost/images/json
+curl --unix-socket /var/run/docker.sock http://localhost/version
+```
+
+To get a shell on the host filesystem I use the host-mount pattern, sometimes after dropping in a [static Docker binary](https://download.docker.com/linux/static/stable/) if the image is stripped down:
+
+```bash
+docker run -it -v /:/host ubuntu:22.04 bash
+chroot /host bash
+```
+
+Management tools mount the socket for legitimate reasons, but from an attacker's perspective the socket is a root-equivalent IPC channel. See the [Docker socket documentation](https://docs.docker.com/engine/security/#docker-daemon-attack-surface) for why Docker themselves warn against mounting it into untrusted containers.
+
+## Exposed Docker TCP API (2375 / 2376)
+
+When the daemon listens on TCP without TLS or client authentication, anyone who can reach the port controls the host. Default ports are **2375** (plain HTTP) and **2376** (TLS). I scan for them during internal recon and on cluster workers during Kubernetes assessments.
+
+```bash
+nmap -sT -p 2375,2376 <target>
+netstat -tnlp | grep 2375
+```
+
+A listener on `0.0.0.0:2375` is exposed to the network; `127.0.0.1:2375` is still dangerous if I already have a shell on the host or a container with host networking.
+
+```bash
+curl http://127.0.0.1:2375/version | python3 -m json.tool
+export DOCKER_HOST=tcp://127.0.0.1:2375
+docker ps
+docker run -it -v /:/host ubuntu:22.04 bash
+chroot /host bash
+```
+
+I wrote up the same path in a Kubernetes worker context in [Container runtime escape via exposed Docker API](/blog/kubernetes-docker-runtime-escape/). The mechanics are identical on a standalone Docker host.
+
+## Privileged containers
+
+A container started with `--privileged` is not "slightly more capable" than a normal one; it receives nearly all capabilities, a large device set, and relaxed seccomp/apparmor profiles. Monitoring stacks and legacy apps are the usual excuse.
+
+```bash
+capsh --print
+ls -l /dev
+fdisk -l
+```
+
+When block devices are visible and `CAP_SYS_ADMIN` is in the effective set, mounting the host root filesystem is straightforward:
+
+```bash
+mount /dev/sda1 /mnt
+ls /mnt/etc/shadow
+```
+
+Portainer exposes a **privileged mode** toggle under runtime settings; when it is enabled, operators can bind-mount host paths into containers from the UI. That is convenient for troubleshooting and catastrophic if the Portainer account is compromised. Capability-specific abuse (module loads, ptrace injection) is covered in [Part 3](/blog/docker-linux-capabilities/).
+
+## Shared network namespace (`--network=host`)
+
+Containers started with `--network=host` share the host's interfaces and listening ports, which collapses the boundary between "inside the container" and "on the machine." I have chained this in practice: a vulnerable application on port 10000, Portainer on 9000 on the same stack, the Docker socket mounted into Portainer, and then host root from there.
+
+Detection is straightforward if you check addressing:
+
+```bash
+ip addr show eth0
+```
+
+On a default bridge setup the Docker gateway is `172.17.0.1`. If the container's address is also `172.17.0.1`, you are not in an isolated network namespace. From there I scan localhost for management services that were never meant to be reachable from a compromised app:
+
+```bash
+nc -zv 127.0.0.1 9000 2375 5000
+```
+
+## Chaining paths together
+
+Real engagements rarely stop at one technique. A common chain on homelab and small-business setups looks like this: compromise a web container on host networking, find Portainer on localhost, log in or abuse a default password (see [Part 6](/blog/docker-management-and-misc/)), use the mounted socket to spawn a privileged container, and mount `/` from there. The [triage playbook](/blog/docker-pentest-playbook/) decision tree is built for exactly these progressions.
+
+Next: [Linux capabilities in depth](/blog/docker-linux-capabilities/) (`SYS_MODULE`, `SYS_PTRACE`, `DAC_READ_SEARCH`, and friends).

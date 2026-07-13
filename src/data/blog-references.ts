@@ -185,9 +185,9 @@ export const blogReferences: Record<string, BlogReferenceEntry> = {
       { title: 'nerdctl', url: 'https://github.com/containerd/nerdctl' },
     ],
     related: [
+      { title: 'Docker escape paths', href: '/blog/docker-escape-paths/' },
       { title: 'Docker pentest playbook', href: '/blog/docker-pentest-playbook/' },
       { title: 'Kubernetes pod escapes', href: '/blog/kubernetes-pod-escapes/' },
-      { title: 'Kubernetes attack surface', href: '/blog/kubernetes-attack-surface/' },
     ],
   },
   'kubernetes-service-account-kubeconfig': {
@@ -208,9 +208,9 @@ export const blogReferences: Record<string, BlogReferenceEntry> = {
       { title: 'Linux capabilities (man7)', url: 'https://man7.org/linux/man-pages/man7/capabilities.7.html' },
     ],
     related: [
+      { title: 'Abusing Linux capabilities in Docker', href: '/blog/docker-linux-capabilities/' },
       { title: 'Docker pentest playbook', href: '/blog/docker-pentest-playbook/' },
       { title: 'Container runtime escape via exposed Docker API', href: '/blog/kubernetes-docker-runtime-escape/' },
-      { title: 'Kubernetes post-exploitation', href: '/blog/kubernetes-post-exploitation/' },
     ],
   },
   'kubernetes-rbac-misconfigs': {
@@ -232,24 +232,100 @@ export const blogReferences: Record<string, BlogReferenceEntry> = {
       { title: 'Azure Instance Metadata Service', url: 'https://learn.microsoft.com/en-us/azure/virtual-machines/instance-metadata-service' },
     ],
     related: [
-      { title: 'Kubernetes RBAC misconfigs', href: '/blog/kubernetes-rbac-misconfigs/' },
+      { title: 'Attacking Docker registries', href: '/blog/docker-registry-offensive/' },
       { title: 'Docker pentest playbook', href: '/blog/docker-pentest-playbook/' },
       { title: 'Kubernetes pod escapes', href: '/blog/kubernetes-pod-escapes/' },
     ],
   },
   'docker-pentest-playbook': {
     references: [
-      { title: 'dockerrootplease', url: 'https://github.com/chrisfosterelli/dockerrootplease' },
-      { title: 'docker-privesc', url: 'https://github.com/flast101/docker-privesc' },
       { title: 'Docker Bench for Security', url: 'https://github.com/docker/docker-bench-security' },
       { title: 'amicontained', url: 'https://github.com/genuinetools/amicontained' },
       { title: 'Falco', url: 'https://github.com/falcosecurity/falco' },
-      { title: 'runc', url: 'https://github.com/opencontainers/runc' },
-      { title: 'containerd', url: 'https://github.com/containerd/containerd' },
+      { title: 'Linux capabilities (man7)', url: 'https://man7.org/linux/man-pages/man7/capabilities.7.html' },
     ],
     related: [
+      { title: 'Docker escape paths', href: '/blog/docker-escape-paths/' },
       { title: 'Container runtime escape via exposed Docker API', href: '/blog/kubernetes-docker-runtime-escape/' },
       { title: 'Kubernetes pod escapes', href: '/blog/kubernetes-pod-escapes/' },
+    ],
+  },
+  'docker-escape-paths': {
+    references: [
+      { title: 'Docker Engine API', url: 'https://docs.docker.com/engine/api/' },
+      { title: 'Docker daemon attack surface', url: 'https://docs.docker.com/engine/security/#docker-daemon-attack-surface' },
+      { title: 'dockerrootplease', url: 'https://github.com/chrisfosterelli/dockerrootplease' },
+      { title: 'docker-privesc', url: 'https://github.com/flast101/docker-privesc' },
+      { title: 'Static Docker binaries', url: 'https://download.docker.com/linux/static/stable/' },
+    ],
+    related: [
+      { title: 'Docker pentest playbook', href: '/blog/docker-pentest-playbook/' },
+      { title: 'Abusing Linux capabilities in Docker', href: '/blog/docker-linux-capabilities/' },
+      { title: 'Portainer and Lambda abuse', href: '/blog/docker-management-and-misc/' },
+    ],
+  },
+  'docker-linux-capabilities': {
+    references: [
+      { title: 'Linux capabilities (man7)', url: 'https://man7.org/linux/man-pages/man7/capabilities.7.html' },
+      { title: 'shocker.c (Docker escape)', url: 'https://github.com/payoto/docker-escape-shocker' },
+      { title: 'Docker engine security', url: 'https://docs.docker.com/engine/security/' },
+      { title: 'amicontained', url: 'https://github.com/genuinetools/amicontained' },
+      { title: 'CIS Docker Benchmark', url: 'https://github.com/docker/docker-bench-security' },
+    ],
+    related: [
+      { title: 'Docker escape paths', href: '/blog/docker-escape-paths/' },
+      { title: 'Kubernetes pod escapes', href: '/blog/kubernetes-pod-escapes/' },
+      { title: 'Docker runtime without the CLI', href: '/blog/docker-runtime-without-docker/' },
+    ],
+  },
+  'docker-runtime-without-docker': {
+    references: [
+      { title: 'containerd', url: 'https://github.com/containerd/containerd' },
+      { title: 'containerd getting started', url: 'https://github.com/containerd/containerd/blob/main/docs/getting-started.md' },
+      { title: 'runc', url: 'https://github.com/opencontainers/runc' },
+      { title: 'OCI runtime specification', url: 'https://github.com/opencontainers/runtime-spec' },
+      { title: 'skopeo', url: 'https://github.com/containers/skopeo' },
+      { title: 'umoci', url: 'https://github.com/opencontainers/umoci' },
+      { title: 'HackTricks: escape from chroot', url: 'https://book.hacktricks.wiki/linux-hardening/privilege-escalation/escape-from-chroot' },
+      { title: 'Linux namespaces (man7)', url: 'https://man7.org/linux/man-pages/man7.namespaces.7.html' },
+    ],
+    related: [
+      { title: 'Docker escape paths', href: '/blog/docker-escape-paths/' },
+      { title: 'Attacking Docker registries', href: '/blog/docker-registry-offensive/' },
+      { title: 'Container runtime escape via exposed Docker API', href: '/blog/kubernetes-docker-runtime-escape/' },
+    ],
+  },
+  'docker-registry-offensive': {
+    references: [
+      { title: 'Docker Registry HTTP API V2', url: 'https://distribution.github.io/distribution/spec/api/' },
+      { title: 'container-diff', url: 'https://github.com/GoogleContainerTools/container-diff' },
+      { title: 'docker-explorer', url: 'https://github.com/google/docker-explorer' },
+      { title: 'Watchtower', url: 'https://github.com/containrrr/watchtower' },
+      { title: 'Hydra', url: 'https://github.com/vanhauser-thc/thc-hydra' },
+      { title: 'Trivy', url: 'https://github.com/aquasecurity/trivy' },
+      { title: 'Clair', url: 'https://github.com/quay/clair' },
+      { title: 'Docker Content Trust', url: 'https://docs.docker.com/engine/security/trust/' },
+      { title: 'Dump process memory (Server Fault)', url: 'https://serverfault.com/questions/173999/dump-a-linux-processs-memory-to-file' },
+    ],
+    related: [
+      { title: 'Docker pentest playbook', href: '/blog/docker-pentest-playbook/' },
+      { title: 'Portainer and Lambda abuse', href: '/blog/docker-management-and-misc/' },
+      { title: 'Kubernetes post-exploitation', href: '/blog/kubernetes-post-exploitation/' },
+    ],
+  },
+  'docker-management-and-misc': {
+    references: [
+      { title: 'Portainer', url: 'https://www.portainer.io/' },
+      { title: 'Docker Engine API', url: 'https://docs.docker.com/engine/api/v1.43/' },
+      { title: 'AWS Lambda execution environment', url: 'https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtime-environment.html' },
+      { title: 'PACU (AWS exploitation)', url: 'https://github.com/RhinoSecurityLabs/pacu' },
+      { title: 'dockscan', url: 'https://github.com/kost/dockscan' },
+      { title: 'Falco', url: 'https://github.com/falcosecurity/falco' },
+      { title: 'docker-bench-security', url: 'https://github.com/docker/docker-bench-security' },
+    ],
+    related: [
+      { title: 'Docker escape paths', href: '/blog/docker-escape-paths/' },
+      { title: 'Attacking Docker registries', href: '/blog/docker-registry-offensive/' },
       { title: 'Kubernetes post-exploitation', href: '/blog/kubernetes-post-exploitation/' },
     ],
   },

