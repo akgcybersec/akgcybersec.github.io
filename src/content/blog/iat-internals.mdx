@@ -174,7 +174,7 @@ When building a loader or implant that needs to avoid import-based detection:
 - **Dynamic resolution via PEB walk + export parser.** No `LoadLibrary` needed if the DLL is already loaded.
 - **Hash the names.** Strings in `.rdata` are the next easiest detection surface after the IAT.
 - **Know which DLLs are guaranteed loaded.** `ntdll.dll` and `kernel32.dll` are always present. `kernelbase.dll` on Vista+. You don't need `LoadLibrary` for those.
-- **Check your own IAT if you ship a DLL.** If your hook DLL declares the APIs it hooks in its own import table, that's a detection signal. Better-RDPThief resolves all six hooked APIs dynamically for exactly this reason.
+- **Check your own IAT if you ship a DLL.** If your hook DLL declares the APIs it hooks in its own import table, that's a detection signal. Better-RDPThief resolves all three hooked APIs dynamically for exactly this reason.
 
 Next: the PEB, and how you find those DLL base addresses in the first place without calling
 a single Windows API.

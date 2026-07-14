@@ -14,7 +14,7 @@ export const projects: Project[] = [
     name: 'Better-RDPThief',
     tagline: 'In-process RDP credential harvester for mstsc.exe',
     description:
-      'C++ DLL that hooks six credential-handling APIs inside the Windows Remote Desktop client via Microsoft Detours, intercepts plaintext credentials after decryption, and logs them locally. Rolling-ADD string obfuscation, runtime API resolution, no IAT entries for hooked APIs.',
+      'C++ DLL that hooks three credential-handling APIs inside mstsc via Microsoft Detours, stages target/user/password, and exfils over a localhost named pipe using Hell\'s Gate syscalls. No disk writes from the client; your implant hosts the pipe server. Rolling-ADD string obfuscation, runtime API resolution.',
     url: 'https://github.com/akgcybersec/Better-RDPThief',
     category: 'Offensive Dev',
     tech: ['C++', 'Windows', 'Detours', 'MSVC'],
