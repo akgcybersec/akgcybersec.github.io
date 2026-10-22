@@ -329,4 +329,25 @@ export const blogReferences: Record<string, BlogReferenceEntry> = {
       { title: 'Kubernetes post-exploitation', href: '/blog/kubernetes-post-exploitation/' },
     ],
   },
+  'pyrit-groq-redteam-walkthrough': {
+    references: [
+      { title: 'PyRIT documentation', url: 'https://microsoft.github.io/PyRIT/latest/' },
+      { title: 'microsoft/PyRIT', url: 'https://github.com/microsoft/PyRIT' },
+      { title: 'PyRIT framework overview', url: 'https://microsoft.github.io/PyRIT/latest/code/framework/' },
+      { title: 'Seed database management', url: 'https://microsoft.github.io/PyRIT/latest/code/memory/seed-database/' },
+      {
+        title: 'Loading built-in datasets',
+        url: 'https://github.com/microsoft/PyRIT/blob/main/doc/code/datasets/1_loading_datasets.py',
+      },
+      {
+        title: 'Writing your own datasets',
+        url: 'https://github.com/microsoft/PyRIT/blob/main/doc/code/datasets/3_dataset_writing.md',
+      },
+      {
+        title: 'Creating seeds programmatically and with YAML',
+        url: 'https://github.com/microsoft/PyRIT/blob/main/doc/code/datasets/2_seed_programming.py',
+      },
+      { title: 'Groq OpenAI-compatible API', url: 'https://console.groq.com/docs/openai' },
+    ],
+  },
 };
