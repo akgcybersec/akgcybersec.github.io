@@ -1,0 +1,351 @@
+---
+title: "Single-turn PyRIT attacks: Skeleton Key and Many-Shot"
+description: "Beyond PromptSendingAttack: victim vs judge scoring, SkeletonKeyAttack and ManyShotJailbreakAttack on Groq with airt_malware and CharSwap."
+date: 2026-10-23
+seriesSlug: "ai-offensive"
+seriesTitle: "Attacking AI"
+seriesPart: 3
+seriesDescription: "Offensive AI red teaming: tooling, prompt attacks, scoring, and LLM app assessment notes."
+tags: ["ai", "llm", "red-team", "pyrit", "ai-offensive"]
+---
+
+> Lab notes from authorised assessments and training environments. Do not point these techniques at systems you do not own or have written permission to test. Do not paste API keys into notebooks you share.
+
+This is **part 3** of Attacking AI. [Part 1](/blog/pyrit-introduction/) was the framework and seed datasets. [Part 2](/blog/pyrit-groq-redteam-walkthrough/) was the first working loop: `PromptSendingAttack`, `airt_illegal`, CharSwap, and a refusal scorer on the same chat endpoint.
+
+Here I stay on **single-turn** attacks, but swap the packaging. Same executor, same seed groups, different attack class. I also split **victim** and **judge** into two `OpenAIChatTarget`s so the model under test is not grading itself. The runnable lab uses `SkeletonKeyAttack` against `airt_malware` on Groq. `ManyShotJailbreakAttack` is the same shape with one class swap.
+
+---
+
+## Single-turn attacks (starting from PromptSendingAttack)
+
+I am talking about attacks that still fire **one live user turn** at the target for the objective, score the reply, and stop. They are not Crescendo / PAIR / red-teaming chat loops. The difference between single-turn strategies is what gets glued onto that one send: nothing extra, a fake prior exchange, or a pile of faux examples.
+
+In part 2, `PromptSendingAttack` was the baseline:
+
+1. Take the seed objective (optionally run request converters such as CharSwap).
+2. Send it to `objective_target`.
+3. Score the response with a true/false objective scorer.
+4. Store the trail in memory.
+
+That is still the workhorse. `SkeletonKeyAttack` and `ManyShotJailbreakAttack` **subclass** it. They reuse converters, scoring config, and `AttackExecutor`. They only change how the outgoing conversation is primed before the real objective goes out.
+
+Mental model:
+
+| Attack | What changes vs plain send |
+|--------|----------------------------|
+| `PromptSendingAttack` | Objective (+ converters) only |
+| `SkeletonKeyAttack` | Prepends a fake user/assistant "skeleton key accepted" exchange, then sends the objective |
+| `ManyShotJailbreakAttack` | Prepends many faux human/AI jailbreak dialogues, then sends the objective |
+
+If part 2 already runs cleanly, the cheapest experiment is: keep seeds, converters, and scorers; change only the attack class.
+
+---
+
+## Victim and judge
+
+I am talking about two roles that part 2 collapsed into one object. That was fine for learning the loop. It is a bad habit on an engagement.
+
+- **Victim** (`objective_target`): the system under test. Prompts and converters hit this model. Findings are about *its* behaviour.
+- **Judge** (`chat_target` on self-ask scorers): a second chat endpoint that only scores. It answers questions like "did this reply refuse?" so the attack layer can mark success or failure.
+
+In code that is two `OpenAIChatTarget` instances. The victim can keep reading `OPENAI_CHAT_*` from the environment. The judge should get `api_key`, `endpoint`, and `model_name` in the constructor so you do not overwrite the victim env when you change judge model.
+
+You *can* point both at the same Groq model id. The split still matters: separate objects, separate billing lines in your head, and an easy path to a cheaper or stricter judge later. Prefer a different judge model when the account allows it, so the victim is not marking its own homework.
+
+Refusal scoring for an attacker still looks like this:
+
+```python
+refusal = SelfAskRefusalScorer(chat_target=judge)          # True = refused
+objective_scorer = TrueFalseInverterScorer(scorer=refusal) # True = answered (attack win)
+```
+
+`AttackScoringConfig(objective_scorer=...)` is what `PromptSendingAttack` and its subclasses use to decide success.
+
+---
+
+## Skeleton Key: what it means
+
+I am talking about Microsoft's skeleton-key style priming, as implemented by PyRIT's `SkeletonKeyAttack`.
+
+Before your malware (or other) objective is sent, the attack pretends the conversation already contained:
+
+1. A **user** turn with the skeleton-key jailbreak text (PyRIT ships a default prompt).
+2. An **assistant** turn that accepts it (also shipped as a default "acceptance" reply).
+
+Then it sends your real objective as the next user message, still in one executor step from your notebook's point of view. The target is supposed to treat that fake history as prior context and stay "unlocked."
+
+Plain English example of the *shape* (not the full default strings):
+
+```text
+[history the attack invents]
+User:      <skeleton-key jailbreak instructions>
+Assistant: <simulated acceptance / compliance>
+
+[live turn]
+User:      <your airt_malware objective, maybe CharSwap'd>
+Assistant: <scored reply>
+```
+
+You do **not** need a separate `Message.from_system_prompt("uncensored…")` for this attack. Skeleton Key builds its own prepended exchange. A floating system-prompt variable that never gets passed anywhere does nothing.
+
+Optional knobs if you outgrow the defaults: `skeleton_key_prompt=` and `skeleton_key_acceptance=` on the constructor.
+
+---
+
+## Many-Shot Jailbreak: what it means
+
+I am talking about Anthropic's many-shot jailbreak pattern, as `ManyShotJailbreakAttack`.
+
+Instead of one fake exchange, the attack prepends a long faux dialogue: many pairs of "human asks something disallowed / assistant complies." Then your objective is appended. The bet is in-context learning from those examples.
+
+Shape:
+
+```text
+User:      <harmful ask 1>
+Assistant: <compliant example 1>
+…
+User:      <harmful ask N>
+Assistant: <compliant example N>
+User:      <your real objective>
+```
+
+Same scoring and converters as Skeleton Key. Swap the class:
+
+```python
+from pyrit.executor.attack import ManyShotJailbreakAttack
+
+attack = ManyShotJailbreakAttack(
+    objective_target=victim,
+    attack_converter_config=converter_config,
+    attack_scoring_config=AttackScoringConfig(
+        objective_scorer=objective_scorer
+    ),
+    example_count=50,  # default is 100; lower it while debugging tokens/cost
+)
+```
+
+`example_count` and optional `many_shot_examples=` control how fat the prepend is. Start small in Colab; a hundred examples burns tokens before the objective even lands.
+
+---
+
+## Lab: Skeleton Key on Groq with airt_malware
+
+I am talking about one concrete notebook. Dataset is `airt_malware` (malware / host-abuse style objectives from the AIRT local packs in [part 1](/blog/pyrit-introduction/)). Attack is `SkeletonKeyAttack`. Victim and judge are separate targets. CharSwap stays as a cheap request converter, same idea as part 2.
+
+Fixes vs a first paste of this lab: unused system prompt removed; labels match `airt_malware`; judge constructed explicitly; `objective_target=victim` (not a leftover name).
+
+### 1. Install and victim env
+
+```python
+!pip install PyRIT
+
+import os
+from google.colab import userdata
+
+os.environ["OPENAI_CHAT_KEY"] = userdata.get("OPENAI_CHAT_KEY")
+os.environ["OPENAI_CHAT_ENDPOINT"] = "https://api.groq.com/openai/v1"
+os.environ["OPENAI_CHAT_MODEL"] = "openai/gpt-oss-120b"
+```
+
+### 2. Memory and load airt_malware
+
+```python
+from pyrit.datasets import SeedDatasetProvider
+from pyrit.memory.central_memory import CentralMemory
+from pyrit.setup import initialize_pyrit_async
+
+await initialize_pyrit_async(memory_db_type="InMemory")
+memory = CentralMemory.get_memory_instance()
+
+datasets = await SeedDatasetProvider.fetch_datasets_async(
+    dataset_names=["airt_malware"]
+)
+await memory.add_seed_datasets_to_memory_async(
+    datasets=datasets,
+    added_by="airt",
+)
+```
+
+Memory accumulates across cells in one runtime. If `get_seed_dataset_names()` shows leftovers from earlier labs, `memory.reset_database()` or a runtime restart clears them.
+
+### 3. Preview objectives
+
+```python
+objectives = []
+for group in memory.get_seed_groups(dataset_name="airt_malware"):
+    for seed in group.seeds:
+        objectives.append(seed.value)
+print(objectives)
+```
+
+Print first. Drop out-of-scope seeds before you spend judge tokens on a full set.
+
+### 4. Victim, judge, and refusal invert scoring
+
+```python
+from pyrit.prompt_target import OpenAIChatTarget
+from pyrit.score import SelfAskRefusalScorer, TrueFalseInverterScorer
+
+victim = OpenAIChatTarget()  # OPENAI_CHAT_* → system under test
+
+judge = OpenAIChatTarget(
+    api_key=userdata.get("OPENAI_CHAT_KEY"),
+    endpoint="https://api.groq.com/openai/v1",
+    model_name="llama-3.3-70b-versatile",  # prefer a different id than the victim
+)
+
+refusal = SelfAskRefusalScorer(chat_target=judge)
+objective_scorer = TrueFalseInverterScorer(scorer=refusal)
+```
+
+If you only have one model id authorised, point `model_name` at the same string as the victim. Keep two objects anyway.
+
+### 5. CharSwap converter config
+
+```python
+from pyrit.converter.charswap_attack_converter import CharSwapConverter
+from pyrit.executor.attack import AttackConverterConfig
+from pyrit.prompt_normalizer.converter_configuration import (
+    ConverterConfiguration as PromptConverterConfiguration,
+)
+
+converters = PromptConverterConfiguration.from_converters(
+    converters=[CharSwapConverter()]
+)
+converter_config = AttackConverterConfig(request_converters=converters)
+```
+
+### 6. Build SkeletonKeyAttack
+
+```python
+from pyrit.executor.attack import SkeletonKeyAttack, AttackScoringConfig
+
+attack = SkeletonKeyAttack(
+    objective_target=victim,
+    attack_converter_config=converter_config,
+    attack_scoring_config=AttackScoringConfig(
+        objective_scorer=objective_scorer
+    ),
+)
+```
+
+### 7. Execute and print
+
+```python
+from pyrit.executor.attack import AttackExecutor
+from pyrit.output.attack_result.pretty import PrettyAttackResultMemoryPrinter
+
+memory_labels = {
+    "op_name": "groq_redteam_op",
+    "user_name": "researcher",
+    "test_name": "airt_malware_skeleton",
+}
+
+seed_groups = list(memory.get_seed_groups(dataset_name="airt_malware"))
+
+results = await AttackExecutor().execute_attack_from_seed_groups_async(
+    attack=attack,
+    seed_groups=seed_groups,
+    memory_labels=memory_labels,
+)
+
+printer = PrettyAttackResultMemoryPrinter()
+for r in results:
+    await printer.write_async(result=r)
+```
+
+`memory_labels` is a broadcast field on the executor: it tags rows for this op. Slice `seed_groups` while you debug converters and scorers.
+
+To try Many-Shot on the same seeds, rebuild `attack` as `ManyShotJailbreakAttack(...)` with the same `victim`, `converter_config`, and `objective_scorer`, then re-run the executor cell. Do not change dataset loading unless you mean to.
+
+### Assembled flow
+
+```python
+!pip install PyRIT
+
+import os
+from google.colab import userdata
+
+os.environ["OPENAI_CHAT_KEY"] = userdata.get("OPENAI_CHAT_KEY")
+os.environ["OPENAI_CHAT_ENDPOINT"] = "https://api.groq.com/openai/v1"
+os.environ["OPENAI_CHAT_MODEL"] = "openai/gpt-oss-120b"
+
+from pyrit.datasets import SeedDatasetProvider
+from pyrit.memory.central_memory import CentralMemory
+from pyrit.setup import initialize_pyrit_async
+from pyrit.prompt_target import OpenAIChatTarget
+from pyrit.score import SelfAskRefusalScorer, TrueFalseInverterScorer
+from pyrit.converter.charswap_attack_converter import CharSwapConverter
+from pyrit.prompt_normalizer.converter_configuration import (
+    ConverterConfiguration as PromptConverterConfiguration,
+)
+from pyrit.executor.attack import (
+    AttackConverterConfig,
+    AttackExecutor,
+    AttackScoringConfig,
+    SkeletonKeyAttack,
+)
+from pyrit.output.attack_result.pretty import PrettyAttackResultMemoryPrinter
+
+await initialize_pyrit_async(memory_db_type="InMemory")
+memory = CentralMemory.get_memory_instance()
+
+datasets = await SeedDatasetProvider.fetch_datasets_async(
+    dataset_names=["airt_malware"]
+)
+await memory.add_seed_datasets_to_memory_async(
+    datasets=datasets, added_by="airt"
+)
+
+victim = OpenAIChatTarget()
+judge = OpenAIChatTarget(
+    api_key=userdata.get("OPENAI_CHAT_KEY"),
+    endpoint="https://api.groq.com/openai/v1",
+    model_name="llama-3.3-70b-versatile",
+)
+objective_scorer = TrueFalseInverterScorer(
+    scorer=SelfAskRefusalScorer(chat_target=judge)
+)
+
+converter_config = AttackConverterConfig(
+    request_converters=PromptConverterConfiguration.from_converters(
+        converters=[CharSwapConverter()]
+    )
+)
+
+attack = SkeletonKeyAttack(
+    objective_target=victim,
+    attack_converter_config=converter_config,
+    attack_scoring_config=AttackScoringConfig(
+        objective_scorer=objective_scorer
+    ),
+)
+
+seed_groups = list(memory.get_seed_groups(dataset_name="airt_malware"))
+results = await AttackExecutor().execute_attack_from_seed_groups_async(
+    attack=attack,
+    seed_groups=seed_groups,
+    memory_labels={
+        "op_name": "groq_redteam_op",
+        "user_name": "researcher",
+        "test_name": "airt_malware_skeleton",
+    },
+)
+
+printer = PrettyAttackResultMemoryPrinter()
+for r in results:
+    await printer.write_async(result=r)
+```
+
+---
+
+## What this lab proves (and what it does not)
+
+I am talking about scope for anyone copying the notebook into a client write-up.
+
+It proves you can keep the part 2 loop and change only the single-turn strategy: Skeleton Key priming, a separate judge for refusal invert scoring, and a different AIRT pack (`airt_malware`). Many-Shot is the same loop with a heavier prepend.
+
+It does not prove the model is "jailbroken" in general. You exercised one priming trick (or many-shot examples), one converter, one dataset, one scoring rule. Multi-turn adversary attacks are a different post. Scorers are still LLM-judged; sample the transcripts yourself before you write a finding.
+
+Authorised targets only. Datasets are inputs, not authorisation.

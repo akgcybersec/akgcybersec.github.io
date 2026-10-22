@@ -350,6 +350,10 @@ export const blogReferences: Record<string, BlogReferenceEntry> = {
     ],
     related: [
       { title: 'PyRIT on Groq: a first Colab red-team lab', href: '/blog/pyrit-groq-redteam-walkthrough/' },
+      {
+        title: 'Single-turn PyRIT attacks: Skeleton Key and Many-Shot',
+        href: '/blog/pyrit-single-turn-attacks/',
+      },
     ],
   },
   'pyrit-groq-redteam-walkthrough': {
@@ -362,6 +366,30 @@ export const blogReferences: Record<string, BlogReferenceEntry> = {
     ],
     related: [
       { title: 'What PyRIT is, and how seed datasets work', href: '/blog/pyrit-introduction/' },
+      {
+        title: 'Single-turn PyRIT attacks: Skeleton Key and Many-Shot',
+        href: '/blog/pyrit-single-turn-attacks/',
+      },
+    ],
+  },
+  'pyrit-single-turn-attacks': {
+    references: [
+      { title: 'PyRIT documentation', url: 'https://microsoft.github.io/PyRIT/latest/' },
+      { title: 'microsoft/PyRIT', url: 'https://github.com/microsoft/PyRIT' },
+      { title: 'PyRIT framework overview', url: 'https://microsoft.github.io/PyRIT/latest/code/framework/' },
+      {
+        title: 'Microsoft: Mitigating skeleton key jailbreaks',
+        url: 'https://www.microsoft.com/en-us/security/blog/2024/06/26/mitigating-skeleton-key-a-new-type-of-generative-ai-jailbreak-technique/',
+      },
+      {
+        title: 'Anthropic: Many-shot jailbreaking',
+        url: 'https://www.anthropic.com/research/many-shot-jailbreaking',
+      },
+      { title: 'Groq OpenAI-compatible API', url: 'https://console.groq.com/docs/openai' },
+    ],
+    related: [
+      { title: 'What PyRIT is, and how seed datasets work', href: '/blog/pyrit-introduction/' },
+      { title: 'PyRIT on Groq: a first Colab red-team lab', href: '/blog/pyrit-groq-redteam-walkthrough/' },
     ],
   },
 };

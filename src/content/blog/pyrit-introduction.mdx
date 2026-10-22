@@ -216,7 +216,9 @@ Write objectives like you write findings: specific enough that a vague, safety-a
 
 **2. Programmatic seeds (best for one-off labs)**
 
-This path is for a quick experiment where you do not want a file on disk yet. You build a `SeedObjective`, wrap it in an `AttackSeedGroup`, then either feed that group straight to `AttackExecutor`, or park the same seeds in memory as a `SeedDataset` so you can query them like `airt_illegal`.
+This path is for a quick experiment where you do not want a file on disk yet. You build a `SeedObjective`, wrap it in an `AttackSeedGroup`, then either keep that group in a Python list, or park the same seeds in memory as a `SeedDataset` so you can query them like `airt_illegal`.
+
+This section stops at **authoring and storing** seeds. Running them needs an attack strategy (in practice `PromptSendingAttack`: single-turn send, optional converters, score the reply) plus `AttackExecutor` to walk the groups. That wiring is [part 2](/blog/pyrit-groq-redteam-walkthrough/). Here the point is getting the seed objects right.
 
 Build the objective and group first (same object for both paths below):
 
@@ -235,23 +237,19 @@ objective = SeedObjective(
 seed_group = AttackSeedGroup(seeds=[objective])
 ```
 
-`AttackSeedGroup` requires exactly one objective. That is what the executor scores against. You can add `SeedPrompt` members later for multi-part asks; one objective-only group is enough for a first probe.
+`AttackSeedGroup` requires exactly one objective. That is what scorers evaluate against once you execute. You can add `SeedPrompt` members later for multi-part asks; one objective-only group is enough for a first probe.
 
-**Path A: hand the group straight to `AttackExecutor`**
+**Path A: keep the group in a list (no seed table)**
 
-Use this when the seed is disposable and you do not care about listing or re-querying it later. You still need a configured attack object (`PromptSendingAttack` with a target and scorer). How to wire that is in [part 2](/blog/pyrit-groq-redteam-walkthrough/); here the interesting bit is the seed list.
+Use this when the seed is disposable and you do not care about listing or re-querying it later. You hold a sequence of `AttackSeedGroup`s in memory as ordinary Python objects. Part 2 will pass that sequence into `AttackExecutor` as `seed_groups=...`.
 
 ```python
-from pyrit.executor.attack import AttackExecutor
-
-# `attack` is a PromptSendingAttack (or similar) you already built
-results = await AttackExecutor().execute_attack_from_seed_groups_async(
-    attack=attack,
-    seed_groups=[seed_group],
-)
+seed_groups = [seed_group]
+# add more AttackSeedGroup(...) entries if you have several ad-hoc asks
+print(seed_groups[0].objective.value)
 ```
 
-`seed_groups` is a sequence. Pass `[seed_group]` for one objective, or build a list of groups for several ad-hoc asks in one run. Nothing is written to the seed tables unless the attack itself stores conversation results in memory.
+Nothing is written to the seed tables here. The list is just input you will hand to the executor after you build the attack in part 2.
 
 **Path B: wrap in a `SeedDataset` and load into memory**
 
@@ -259,7 +257,6 @@ Use this when you want the same query path as built-ins: `get_seed_dataset_names
 
 ```python
 from pyrit.models import SeedDataset
-from pyrit.executor.attack import AttackExecutor
 
 custom = SeedDataset(
     dataset_name="ad_hoc_leakage",
@@ -277,13 +274,10 @@ print(memory.get_seed_dataset_names())
 print(memory.get_seeds(dataset_name="ad_hoc_leakage"))
 
 seed_groups = list(memory.get_seed_groups(dataset_name="ad_hoc_leakage"))
-results = await AttackExecutor().execute_attack_from_seed_groups_async(
-    attack=attack,
-    seed_groups=seed_groups,
-)
+print(len(seed_groups), seed_groups[0].objective.value)
 ```
 
-Path A is faster for a one-shot notebook cell. Path B is what you want once the objective is worth keeping, sharing, or mixing with `airt_*` packs under one executor call.
+Path A is faster for a one-shot notebook cell. Path B is what you want once the objective is worth keeping, sharing, or mixing with `airt_*` packs. Either way, `seed_groups` is what [part 2](/blog/pyrit-groq-redteam-walkthrough/) feeds to `AttackExecutor` once `PromptSendingAttack` is configured.
 
 ---
 
