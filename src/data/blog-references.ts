@@ -390,6 +390,27 @@ export const blogReferences: Record<string, BlogReferenceEntry> = {
     related: [
       { title: 'What PyRIT is, and how seed datasets work', href: '/blog/pyrit-introduction/' },
       { title: 'PyRIT on Groq: a first Colab red-team lab', href: '/blog/pyrit-groq-redteam-walkthrough/' },
+      {
+        title: 'Multi-turn PyRIT: MultiPromptSending with airt_* wraps',
+        href: '/blog/pyrit-multi-turn-attacks/',
+      },
+    ],
+  },
+  'pyrit-multi-turn-attacks': {
+    references: [
+      { title: 'PyRIT documentation', url: 'https://microsoft.github.io/PyRIT/latest/' },
+      { title: 'microsoft/PyRIT', url: 'https://github.com/microsoft/PyRIT' },
+      { title: 'PyRIT framework overview', url: 'https://microsoft.github.io/PyRIT/latest/code/framework/' },
+      { title: 'Seed database management', url: 'https://microsoft.github.io/PyRIT/latest/code/memory/seed-database/' },
+      { title: 'Groq OpenAI-compatible API', url: 'https://console.groq.com/docs/openai' },
+    ],
+    related: [
+      { title: 'What PyRIT is, and how seed datasets work', href: '/blog/pyrit-introduction/' },
+      { title: 'PyRIT on Groq: a first Colab red-team lab', href: '/blog/pyrit-groq-redteam-walkthrough/' },
+      {
+        title: 'Single-turn PyRIT attacks: Skeleton Key and Many-Shot',
+        href: '/blog/pyrit-single-turn-attacks/',
+      },
     ],
   },
 };

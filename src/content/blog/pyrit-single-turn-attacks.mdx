@@ -346,6 +346,8 @@ I am talking about scope for anyone copying the notebook into a client write-up.
 
 It proves you can keep the part 2 loop and change only the single-turn strategy: Skeleton Key priming, a separate judge for refusal invert scoring, and a different AIRT pack (`airt_malware`). Many-Shot is the same loop with a heavier prepend.
 
-It does not prove the model is "jailbroken" in general. You exercised one priming trick (or many-shot examples), one converter, one dataset, one scoring rule. Multi-turn adversary attacks are a different post. Scorers are still LLM-judged; sample the transcripts yourself before you write a finding.
+It does not prove the model is "jailbroken" in general. You exercised one priming trick (or many-shot examples), one converter, one dataset, one scoring rule. Scorers are still LLM-judged; sample the transcripts yourself before you write a finding.
+
+[Part 4](/blog/pyrit-multi-turn-attacks/) moves to real multi-turn sessions with `MultiPromptSendingAttack` and AIRT wraps.
 
 Authorised targets only. Datasets are inputs, not authorisation.
